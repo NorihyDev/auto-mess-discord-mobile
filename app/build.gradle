@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'dev.norihy.discordmobile'
+    compileSdk 36
+    buildFeatures { buildConfig true }
+    defaultConfig {
+        applicationId 'dev.norihy.discordmobile'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '1.0.0'
+    }
+    signingConfigs {
+        release {
+            if (System.getenv('DMA_STORE_FILE')) {
+                storeFile file(System.getenv('DMA_STORE_FILE'))
+                storePassword System.getenv('DMA_STORE_PASSWORD')
+                keyAlias 'mobile'
+                keyPassword System.getenv('DMA_STORE_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (System.getenv('DMA_STORE_FILE')) signingConfig signingConfigs.release
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+dependencies {
+    implementation 'androidx.webkit:webkit:1.17.1'
+    testImplementation 'junit:junit:4.13.2'
+}
