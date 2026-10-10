@@ -6,7 +6,7 @@ Lightweight native Android version of [discord-mess-auto](https://github.com/Nor
 
 ## Install and use
 
-1. Install the signed `discord-message-auto-1.1.0.apk` built from this version (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Allow installation from that source if Android requests it.
+1. Install the signed `discord-message-auto-1.2.0.apk` built from this version (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Allow installation from that source if Android requests it.
 2. Enter the full `https://discord.com/channels/SERVER_ID/CHANNEL_ID` link and your exact message.
 3. Tap **Connexion Discord** and sign in manually in the embedded browser. Complete 2FA or CAPTCHA normally. The application does not ask for a token or extract your credentials.
 4. Tap **Vérifier** to test opening detection without inserting text, sending a message or creating a reservation.
@@ -26,11 +26,11 @@ Defaults: `20:00`, `Indian/Antananarivo`, 5 minutes before and 15 minutes after,
 - Preloaded channel and persisted local login before the monitoring window.
 - A `MutationObserver` detects editor changes directly in the page, then uses an origin-scoped WebView message callback. There is no repeated JavaScript/native readiness polling.
 - A 16 ms **target** fallback checks CSS visibility while actively waiting. It stops as soon as an editor is detected or the session ends.
-- Native Android `InputConnection.commitText` inserts text, including emoji and line breaks. The prepared draft and focus are verified before native Enter events.
-- In the background, Chromium's `insertText` editing command emits editor input events; a DOM Enter event submits the verified draft after the persistent reservation. No `innerHTML` replacement or Discord token/API is used. Compatibility depends on Discord continuing to accept these editor events.
+- Version 1.2 prepares the message immediately in the opening observer with Chromium's `insertText` command. One native callback persists the daily reservation, then one page command rechecks the draft and submits Enter. This replaces the sequence of separate readiness, insertion and verification callbacks in 1.1, in foreground and background.
+- Editor input events and a DOM Enter event are used. No `innerHTML` replacement or Discord token/API is used. Compatibility depends on Discord continuing to accept these editor events.
 - The release APK is reduced with R8 and resource shrinking. Runtime browser resources are supplied by Android System WebView.
 
-The journal reports native preparation through Enter and page observation through a matching new message. These measurements do not measure server acceptance, the owner's permission change or your position among participants. There is **no measured speed comparison with the PC application** and being first is not guaranteed. Phone CPU, WebView version, network and Discord rendering affect the result.
+The journal reports page detection through Enter dispatch and page observation through a matching new message. See [device timing observations](docs/performance.md) for the local 1.1/1.2 comparison. These measurements do not measure server acceptance, the owner's permission change or your position among participants. There is **no measured speed comparison with the PC application** and being first is not guaranteed. Phone CPU, WebView version, network and Discord rendering affect the result.
 
 ## Duplicate protection and uncertainty
 
@@ -68,7 +68,7 @@ To build a reduced, signed release on Windows:
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.1.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
+The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.2.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
 
 GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration or reservations. Published release APKs use the maintained local release key.
 
@@ -83,7 +83,7 @@ python -m unittest discover -s tests -v
 
 Browser tests intercept every request with a fake channel; they do not contact Discord or send real messages. They exercise the same `watcher.js` asset used in Android. Java tests cover configuration, exact window boundaries, midnight, timezone conversion and daylight saving.
 
-Version 1.1 background regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send after Home, send while the screen is off, notification stop and deadline cleanup. A real Discord send, live editor compatibility, Doze and overnight behavior remain unverified. Start with **Vérifier** and an authorized test channel before relying on a check-in.
+Version 1.2 regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send in foreground, send after Home, send while the screen is off, notification stop and deadline cleanup. A real Discord send, live editor compatibility, Doze and overnight behavior remain unverified. Start with **Vérifier** and an authorized test channel before relying on a check-in.
 
 With a device connected, install the separate debug/test APKs, grant its notification permission and run:
 

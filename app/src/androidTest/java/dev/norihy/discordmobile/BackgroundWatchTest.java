@@ -42,7 +42,7 @@ public final class BackgroundWatchTest {
         web = (WebView)field("web");
         ui(() -> web.loadDataWithBaseURL(URL,
             "<html><body><main><ul id='messages'></ul><div role='textbox' contenteditable='true' data-slate-editor='true' style='display:none'></div></main>"
-            + "<script>window.sent=0;document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.defaultPrevented){window.sent++;document.querySelector('#messages').innerHTML='<li id=chat-messages-1><div id=message-content-1>'+document.querySelector('[role=textbox]').innerText+'</div></li>';}});</script></body></html>",
+            + "<script>window.sent=0;document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.defaultPrevented){window.enterLatency=performance.now()-window.openedAt;window.sent++;document.querySelector('#messages').innerHTML='<li id=chat-messages-1><div id=message-content-1>'+document.querySelector('[role=textbox]').innerText+'</div></li>';}});</script></body></html>",
             "text/html", "UTF-8", URL));
         Thread.sleep(1500);
         ui(() -> { try { ((Button)field("arm")).performClick(); } catch(Exception e) { throw new RuntimeException(e); } });
@@ -51,21 +51,24 @@ public final class BackgroundWatchTest {
     }
     @Test public void testSendAfterHome() throws Exception {
         ui(() -> activity.moveTaskToBack(true));
-        checkBackgroundSend();
+        checkSend(false);
+    }
+    @Test public void testSendForeground() throws Exception {
+        checkSend(true);
     }
     @Test public void testSendWithScreenOff() throws Exception {
         try (android.os.ParcelFileDescriptor ignored = getInstrumentation().getUiAutomation()
                 .executeShellCommand("input keyevent 223")) {
-            checkBackgroundSend();
+            checkSend(false);
         } finally {
             getInstrumentation().getUiAutomation().executeShellCommand("input keyevent 224").close();
         }
     }
-    private void checkBackgroundSend() throws Exception {
+    private void checkSend(boolean foreground) throws Exception {
         Thread.sleep(3000);
-        assertEquals(Boolean.FALSE, field("foreground"));
+        assertEquals(foreground, field("foreground"));
         assertEquals("armed", field("phase"));
-        js("document.querySelector('[role=textbox]').style.display='block'");
+        js("window.openedAt=performance.now();document.querySelector('[role=textbox]').style.display='block'");
         long until = System.currentTimeMillis() + 15000;
         while (!"idle".equals(field("phase")) && System.currentTimeMillis() < until) Thread.sleep(100);
         assertEquals("idle", field("phase"));
@@ -76,6 +79,10 @@ public final class BackgroundWatchTest {
         assertTrue(((TextView)field("status")).getText().toString().startsWith("Message observ"));
         assertEquals("confirmed", getInstrumentation().getTargetContext().getSharedPreferences("watcher", 0)
             .getString("attempt:" + URL + ":" + LocalDate.now(ZoneOffset.UTC), ""));
+        AtomicReference<String> latency = new AtomicReference<>();
+        ui(() -> web.evaluateJavascript("window.enterLatency", latency::set));
+        Thread.sleep(200);
+        android.util.Log.i("DMA_BENCH", "opening_to_enter_ms=" + latency.get() + ", foreground=" + field("foreground"));
     }
     @Test public void testNotificationStop() throws Exception {
         ui(() -> activity.moveTaskToBack(true)); Thread.sleep(1000);
