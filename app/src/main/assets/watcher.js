@@ -72,6 +72,19 @@
         stop,
         validEmpty,
         validPrepared,
+        insertBackground() {
+            if (!validEmpty()) return false;
+            // Chromium editing commands emit input events consumed by Slate/React.
+            // Never replace innerHTML: that would bypass the application's editor state.
+            return document.execCommand('insertText', false, config.message) && validPrepared();
+        },
+        sendBackground() {
+            if (!validPrepared()) return false;
+            const options = {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true};
+            editor.dispatchEvent(new KeyboardEvent('keydown', options));
+            editor.dispatchEvent(new KeyboardEvent('keyup', options));
+            return true;
+        },
         install(options) {
             stop(); config = options;
             observer = new MutationObserver(check);
