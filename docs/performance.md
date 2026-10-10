@@ -34,3 +34,9 @@ No comparison against the running PC app was made. These numbers do not include
 Discord's permission propagation, rendering of a real channel, network latency,
 server acknowledgement or competition with other users. Live Discord editor
 compatibility and overnight/Doze behavior still need separate verification.
+
+## Version 1.2.1 live compatibility fix
+
+On 2026-10-10, an authorized test in a dedicated Discord channel reproduced the 1.2 failure: `execCommand` displayed the draft in a Slate zero-width leaf, but Enter did not publish it. Native text input updated the editor state and native Enter published the message.
+
+The corrected Android app observed exactly one test message 106 ms after editor detection following a permission change. The message remained after a channel reload. This measures one page observation in foreground, not server acceptance latency, permission propagation time or overnight reliability. The corrected native input path also passed the five existing device tests, including Home and screen-off sends. Previous 1.2 synthetic timing figures do not establish live Discord compatibility.

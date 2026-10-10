@@ -34,7 +34,7 @@ public final class BackgroundWatchTest {
         Thread.sleep(500);
         Context context = getInstrumentation().getTargetContext();
         context.getSharedPreferences("watcher", 0).edit().clear()
-            .putString("url", URL).putString("message", "USB background test")
+            .putString("url", URL).putString("message", "USB background test\nEmoji \u2705")
             .putString("time", LocalTime.now(ZoneOffset.UTC).toString().substring(0, 5))
             .putString("zone", "UTC").putString("before", "5").putString("after", "15").commit();
         activity = (MainActivity)getInstrumentation().startActivitySync(
@@ -42,7 +42,7 @@ public final class BackgroundWatchTest {
         web = (WebView)field("web");
         ui(() -> web.loadDataWithBaseURL(URL,
             "<html><body><main><ul id='messages'></ul><div role='textbox' contenteditable='true' data-slate-editor='true' style='display:none'></div></main>"
-            + "<script>window.sent=0;document.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.defaultPrevented){window.enterLatency=performance.now()-window.openedAt;window.sent++;document.querySelector('#messages').innerHTML='<li id=chat-messages-1><div id=message-content-1>'+document.querySelector('[role=textbox]').innerText+'</div></li>';}});</script></body></html>",
+            + "<script>window.sent=0;document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.isTrusted&&!e.defaultPrevented){window.enterLatency=performance.now()-window.openedAt;window.sent++;document.querySelector('#messages').insertAdjacentHTML('beforeend','<li id=chat-messages-'+window.sent+'><div id=message-content-'+window.sent+'>'+document.querySelector('[role=textbox]').innerText+'</div></li>');document.querySelector('[role=textbox]').innerText='';}});</script></body></html>",
             "text/html", "UTF-8", URL));
         Thread.sleep(1500);
         ui(() -> { try { ((Button)field("arm")).performClick(); } catch(Exception e) { throw new RuntimeException(e); } });
@@ -76,7 +76,7 @@ public final class BackgroundWatchTest {
         ui(() -> web.evaluateJavascript("window.sent", sent::set));
         Thread.sleep(500);
         assertEquals("One Enter in background; status=" + ((TextView)field("status")).getText(), "1", sent.get());
-        assertTrue(((TextView)field("status")).getText().toString().startsWith("Message observ"));
+        assertTrue(((TextView)field("status")).getText().toString().startsWith("Message seen"));
         assertEquals("confirmed", getInstrumentation().getTargetContext().getSharedPreferences("watcher", 0)
             .getString("attempt:" + URL + ":" + LocalDate.now(ZoneOffset.UTC), ""));
         AtomicReference<String> latency = new AtomicReference<>();
@@ -93,7 +93,7 @@ public final class BackgroundWatchTest {
         assertFalse(getInstrumentation().getTargetContext().getSharedPreferences("watcher", 0)
             .contains("attempt:" + URL + ":" + LocalDate.now(ZoneOffset.UTC)));
     }
-    @Test public void testServiceDeadlineStopsWithoutReservation() throws Exception {
+    @Test public void testServiceDeadlineStopsWithoutSending() throws Exception {
         ui(() -> activity.moveTaskToBack(true));
         getInstrumentation().getTargetContext().startService(new Intent(
             getInstrumentation().getTargetContext(), WatchService.class)

@@ -31,8 +31,8 @@ class WatcherTests(unittest.TestCase):
     def tearDown(self):
         self.page.close()
 
-    def install(self, preview=False, deadline=None, fast=False):
-        self.page.evaluate("options => DMA.install({...options,deadline: options.deadline ?? Date.now()+10000})", dict(url=URL, message="Check-in ✅", token="session-one", preview=preview, deadline=deadline, fast=fast))
+    def install(self, preview=False, deadline=None):
+        self.page.evaluate("options => DMA.install({...options,deadline: options.deadline ?? Date.now()+10000})", dict(url=URL, message="Check-in ✅", token="session-one", preview=preview, deadline=deadline))
 
     def open_editor(self):
         self.page.evaluate("document.querySelector('[role=textbox]').style.display='block'")
@@ -59,68 +59,68 @@ class WatcherTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("document.activeElement.matches('[role=textbox]')"))
         self.assertEqual(["preview"], self.page.evaluate("events.map(e=>e.type)"))
 
-    def test_background_edit_emits_input_and_enter_confirms_once(self):
-        self.install(); self.open_editor(); self.event("ready")
-        self.page.evaluate("""window.inputs=0; window.sends=0;
-            document.addEventListener('input', () => inputs++);
-            document.addEventListener('keydown', e => {
-                if(e.key==='Enter' && !e.defaultPrevented) {
-                    sends++;
-                    document.querySelector('#messages').innerHTML='<li id="chat-messages-1"><div id="message-content-1">'+document.querySelector('[role=textbox]').innerText+'</div></li>';
+    def test_native_input_updates_editor_state_and_sends_once(self):
+        # Model an editor that handles beforeinput, and rejects synthetic Enter.
+        self.page.evaluate("""window.model='';window.sends=0;
+            const el=document.querySelector('[role=textbox]');
+            el.addEventListener('beforeinput',e=>{
+                if(e.inputType==='insertText'&&!e.defaultPrevented) {
+                    model+=e.data;e.preventDefault();el.textContent=model;
+                }
+            });
+            el.addEventListener('keydown',e=>{
+                if(e.key==='Enter'&&e.isTrusted&&!e.defaultPrevented&&model) {
+                    sends++;document.querySelector('#messages').innerHTML=
+                    '<li id="chat-messages-new"><div id="message-content-new">'+model+'</div></li>';
                 }
             });""")
-        self.assertTrue(self.page.evaluate("DMA.insertBackground()"))
-        self.assertGreater(self.page.evaluate("inputs"), 0)
-        self.assertFalse(self.page.evaluate("DMA.insertBackground()"))
-        self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
-        self.assertTrue(self.page.evaluate("DMA.sendBackground()"))
-        self.event("confirmed")
-        self.assertEqual(1, self.page.evaluate("sends"))
-
-    def test_background_edit_preserves_a_new_draft(self):
         self.install(); self.open_editor(); self.event("ready")
-        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Keep my draft'")
-        self.assertFalse(self.page.evaluate("DMA.insertBackground()"))
-        self.assertEqual("Keep my draft", self.page.locator("[role=textbox]").inner_text())
-        self.assertFalse(self.page.evaluate("DMA.sendBackground()"))
-
-    def test_background_send_rejects_changed_channel(self):
-        self.install(); self.open_editor(); self.event("ready")
-        self.assertTrue(self.page.evaluate("DMA.insertBackground()"))
-        self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
-        self.page.evaluate("history.pushState({},'', '/channels/123/999')")
-        self.assertFalse(self.page.evaluate("DMA.sendBackground()"))
-
-    def test_fast_path_prepares_on_detection_but_waits_for_reservation(self):
-        self.install(fast=True); self.open_editor(); self.event("prepared")
-        self.assertEqual("Check-in ✅", self.page.locator("[role=textbox]").inner_text())
-        self.assertEqual(["prepared"], self.page.evaluate("events.map(e=>e.type)"))
-        self.assertFalse(self.page.evaluate("DMA.sendReserved('old-token')"))
-        self.page.evaluate("""window.sends=0;document.addEventListener('keydown', e => {
-            if(e.key==='Enter' && !e.defaultPrevented) {
-                sends++;document.querySelector('#messages').innerHTML='<li id="chat-messages-1"><div id="message-content-1">Check-in ✅</div></li>';
-            }
-        });""")
-        self.assertTrue(self.page.evaluate("DMA.sendReserved('session-one')"))
-        self.event("confirmed")
-        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
-        self.assertEqual(1, self.page.evaluate("sends"))
-        self.assertEqual(["prepared", "sent", "confirmed"], self.page.evaluate("events.map(e=>e.type)"))
-
-    def test_fast_path_preserves_draft_and_preview_never_inserts(self):
-        self.install(fast=True, preview=True); self.open_editor(); self.event("preview")
         self.assertEqual("", self.page.locator("[role=textbox]").inner_text())
-        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Keep this'")
-        self.install(fast=True); self.event("draft")
-        self.assertEqual("Keep this", self.page.locator("[role=textbox]").inner_text())
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.assertTrue(self.page.evaluate("DMA.validPrepared()"))
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('old-token')"))
+        self.assertTrue(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.page.keyboard.press("Enter")
+        self.event("confirmed")
+        self.assertEqual(1, self.page.evaluate("sends"))
 
-    def test_fast_path_rechecks_modified_draft_and_cancellation(self):
-        self.install(fast=True); self.open_editor(); self.event("prepared")
-        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Changed'")
-        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
+    def test_async_native_preparation_waits_for_input_and_stops_on_cancel(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.assertFalse(self.page.evaluate("DMA.beginNativePreparation('old-token')"))
+        self.assertTrue(self.page.evaluate("DMA.beginNativePreparation('session-one')"))
+        self.assertEqual(["ready"], self.page.evaluate("events.map(e=>e.type)"))
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.event("prepared")
+        self.assertEqual(["ready", "prepared"], self.page.evaluate("events.map(e=>e.type)"))
         self.page.evaluate("DMA.stop()")
-        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
-        self.assertEqual(["prepared"], self.page.evaluate("events.map(e=>e.type)"))
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+
+    def test_native_send_rejects_changed_channel(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.page.evaluate("history.pushState({},'', '/channels/123/999')")
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+
+    def test_native_send_rechecks_modified_draft_and_cancellation(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Changed'")
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.page.evaluate("DMA.stop()")
+        self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.assertEqual(["ready"], self.page.evaluate("events.map(e=>e.type)"))
+
+    def test_native_sent_reports_timing_only_for_authorized_session(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.evaluate("DMA.nativeSent('session-one')")
+        self.assertEqual(["ready"], self.page.evaluate("events.map(e=>e.type)"))
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.assertTrue(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
+        self.page.evaluate("DMA.nativeSent('old-token');DMA.nativeSent('session-one')")
+        self.assertEqual(["ready", "sent"], self.page.evaluate("events.map(e=>e.type)"))
+        self.assertGreaterEqual(self.page.evaluate("events[1].elapsed"), 0)
 
     def test_existing_draft_preserved(self):
         self.page.evaluate("document.querySelector('[role=textbox]').textContent='Do not overwrite'")

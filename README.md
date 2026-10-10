@@ -2,21 +2,23 @@
 
 Lightweight native Android version of [discord-mess-auto](https://github.com/NorihyDev/discord-mess-auto). Configure a Discord text channel, a message and a daily monitoring window; the app observes the channel editor and makes one send attempt when it becomes writable.
 
-**Android 8.0+ · no Python on your phone · no separate Chromium download · French interface.**
+**Android 8.0+ · no Python on your phone · no separate Chromium download · English interface.**
 
 ## Install and use
 
-1. Install the signed `discord-message-auto-1.2.0.apk` built from this version (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Allow installation from that source if Android requests it.
-2. Enter the full `https://discord.com/channels/SERVER_ID/CHANNEL_ID` link and your exact message.
-3. Tap **Connexion Discord** and sign in manually in the embedded browser. Complete 2FA or CAPTCHA normally. The application does not ask for a token or extract your credentials.
-4. Tap **Vérifier** to test opening detection without inserting text, sending a message or creating a reservation.
-5. Review **Réglages**, then tap **Surveiller**. Allow notifications when requested, then tap **Surveiller** again. The app preloads the channel and waits for the configured monitoring window. Keep the phone connected to the Internet. You can switch apps or turn off the screen; the ongoing notification provides **Arrêter** and reopens the running session.
+1. Install the signed `discord-message-auto-1.3.0.apk` built from this version (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases).
+2. Paste a full Discord channel link into **Channel**, then tap **Open Discord** and sign in manually. Complete 2FA or CAPTCHA normally. Tap **Back to setup** to return.
+3. Write **Your message** and tap **Edit** beside **Opening time** to choose the time and timezone.
+4. Tap **Check without sending** to verify channel readiness without inserting text or sending.
+5. Tap **Start watching** and allow notifications if requested. Watching starts automatically after permission is granted. The app preloads Discord and waits for the configured window. You can switch apps or turn off the screen; the notification lets you **Stop watching** or return.
 
-Version 1.1 uses a user-started foreground service with a notification and a bounded partial wake lock. The WebView stays active when the activity is hidden. Rotation preserves the activity. Back sends the running app to the background. Removing the task from Recents, force-stopping, rebooting, activity destruction or an OS process kill ends the session; there is no automatic restart or retry. Each completed session ends; arm it again for the next day. Settings and the Discord session stay on the device.
+The English interface uses bundled [Manrope](https://github.com/google/fonts/tree/main/ofl/manrope) typography, a light theme and a compact three-card setup. The **More options** menu contains **Activity log**, **Watch window**, **Reset today's attempt**, and **About & help**. Edits stay on the device, including when the app is backgrounded.
+
+Monitoring uses a user-started foreground service with a notification and a bounded partial wake lock. The WebView stays active when the activity is hidden. Rotation preserves the activity. Back sends the running app to the background. Removing the task from Recents, force-stopping, rebooting, activity destruction or an OS process kill ends the session; there is no automatic restart or retry. Each completed session ends; arm it again for the next day. Settings and the Discord session stay on the device.
 
 For extended screen-off monitoring, set the app's Android battery mode to **Unrestricted / No restrictions** (especially on Xiaomi/HyperOS). Doze, manufacturer battery management and lost network connectivity can still interrupt monitoring. A wake lock increases battery usage while armed, including the wait before the window. Physical-device tests below cover short screen-off sessions, not overnight reliability.
 
-Defaults: `20:00`, `Indian/Antananarivo`, 5 minutes before and 15 minutes after, matching the desktop project. Change the timezone to `Europe/Zurich` if the opening time is expressed in Swiss local time. Daylight saving and windows crossing midnight are handled by `java.time`.
+Defaults for a new install: `20:00`, the device's timezone, 5 minutes before and 15 minutes after. Existing settings are preserved. Choose the timezone in which the channel's opening time is expressed; **Use device time zone** selects the phone's current zone. Daylight saving and windows crossing midnight are handled by `java.time`.
 
 **Opening time defines a window, not a scheduled keypress.** An already writable channel can receive the message at the beginning of the window. A late opening can trigger an attempt until the end of the window. Threads and direct messages are unsupported. Existing drafts stop an attempt rather than being replaced.
 
@@ -26,8 +28,8 @@ Defaults: `20:00`, `Indian/Antananarivo`, 5 minutes before and 15 minutes after,
 - Preloaded channel and persisted local login before the monitoring window.
 - A `MutationObserver` detects editor changes directly in the page, then uses an origin-scoped WebView message callback. There is no repeated JavaScript/native readiness polling.
 - A 16 ms **target** fallback checks CSS visibility while actively waiting. It stops as soon as an editor is detected or the session ends.
-- Version 1.2 prepares the message immediately in the opening observer with Chromium's `insertText` command. One native callback persists the daily reservation, then one page command rechecks the draft and submits Enter. This replaces the sequence of separate readiness, insertion and verification callbacks in 1.1, in foreground and background.
-- Editor input events and a DOM Enter event are used. No `innerHTML` replacement or Discord token/API is used. Compatibility depends on Discord continuing to accept these editor events.
+- Version 1.2.1 uses Android `InputConnection.commitText` to feed Discord's editor through native input, then dispatches native Enter after persisting the daily reservation. The page observes the asynchronously updated draft before authorizing Enter. The previous `execCommand` insertion could display text without updating Discord's editor state; synthetic Enter then left it unsent.
+- The desktop viewport stays at 980 CSS pixels so Discord's composer does not collapse to zero width on a phone. No `innerHTML` replacement or Discord token/API is used.
 - The release APK is reduced with R8 and resource shrinking. Runtime browser resources are supplied by Android System WebView.
 
 The journal reports page detection through Enter dispatch and page observation through a matching new message. See [device timing observations](docs/performance.md) for the local 1.1/1.2 comparison. These measurements do not measure server acceptance, the owner's permission change or your position among participants. There is **no measured speed comparison with the PC application** and being first is not guaranteed. Phone CPU, WebView version, network and Discord rendering affect the result.
@@ -38,7 +40,7 @@ One reservation per exact channel and scheduled day is written synchronously to 
 
 Confirmation means a new visible message row contains matching normalized text within ten seconds. An optimistic UI message or another user's identical message can satisfy it. This is not a Discord server acknowledgement or proof that a server bot accepted the check-in. Check the channel yourself when the result is uncertain.
 
-The application intentionally provides no button to clear reservations. Clearing Android app storage or uninstalling removes both reservations and the login, and can allow a duplicate. Check Discord before doing so.
+In **More options**, **Reset today's attempt** lets you manually remove the reservation for the configured channel and scheduled day. Stop monitoring, check Discord, then explicitly confirm the checkbox. It does not send or start monitoring, and leaves other channels/days and the login untouched. An uncertain send may already exist, so resetting can allow a duplicate. No reservation is cleared automatically.
 
 ## Account policy and compatibility
 
@@ -68,9 +70,9 @@ To build a reduced, signed release on Windows:
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.2.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
+The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.3.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
 
-GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration or reservations. Published release APKs use the maintained local release key.
+GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration. Published release APKs use the maintained local release key.
 
 ## Verification
 
@@ -83,7 +85,7 @@ python -m unittest discover -s tests -v
 
 Browser tests intercept every request with a fake channel; they do not contact Discord or send real messages. They exercise the same `watcher.js` asset used in Android. Java tests cover configuration, exact window boundaries, midnight, timezone conversion and daylight saving.
 
-Version 1.2 regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send in foreground, send after Home, send while the screen is off, notification stop and deadline cleanup. A real Discord send, live editor compatibility, Doze and overnight behavior remain unverified. Start with **Vérifier** and an authorized test channel before relying on a check-in.
+Version 1.3 regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send in foreground, send after Home, send while the screen is off, notification stop and deadline cleanup. An authorized live test on 2026-10-10 confirmed one automatic message after a permission change, still present after reloading the channel. The app observed it 106 ms after editor detection; this is one interface observation, not a server-latency benchmark. Doze and overnight behavior remain unverified. Start with **Check without sending** and an authorized test channel before relying on a check-in.
 
 With a device connected, install the separate debug/test APKs, grant its notification permission and run:
 
@@ -99,8 +101,9 @@ Device tests reset only the debug package's preferences and briefly turn the scr
 
 ## Project files
 
-- `app/src/main/java/…/MainActivity.java`: native UI, WebView, lifecycle, native input and persistent reservations.
+- `app/src/main/java/…/MainActivity.java`: native UI, WebView, lifecycle, native input and session state.
 - `app/src/main/java/…/WatchConfig.java`: validation and daily windows.
+- `app/src/main/java/dev/norihy/discordmobile/UiStyle.java`: native UI styling and bundled Manrope typography.
 - `app/src/main/assets/watcher.js`: opening detection, input guards and confirmation observer.
 - `app/src/test/`: Java scheduling tests.
 - `tests/`: isolated browser regression tests.

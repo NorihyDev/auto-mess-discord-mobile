@@ -1,4 +1,4 @@
 <resources>
-    <string name="channel">Salon</string>
-    <string name="settings">Réglages</string>
+    <string name="channel">View Discord</string>
+    <string name="settings">Back to setup</string>
 </resources>

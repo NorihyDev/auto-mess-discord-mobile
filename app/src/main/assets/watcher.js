@@ -56,10 +56,7 @@
         document.addEventListener('beforeinput', inputGuard, {capture: true, once: true});
         ready = true;
         observer.disconnect(); clearInterval(fallback); clearTimeout(timer);
-        if (config.fast) {
-            if (!insertBackground()) { stop(); emit('prepare_failed'); return; }
-            emit('prepared');
-        } else emit('ready');
+        emit('ready');
     }
     function confirmation() {
         if (!sameChannel()) { stop(); emit('uncertain'); return; }
@@ -72,31 +69,35 @@
             }
         }
     }
-    function insertBackground() {
-        if (!validEmpty()) return false;
-        // Chromium editing commands emit input events consumed by Slate/React.
-        // Never replace innerHTML: that would bypass the application's editor state.
-        return document.execCommand('insertText', false, config.message) && validPrepared();
-    }
     window.DMA = {
         stop,
         validEmpty,
         validPrepared,
-        insertBackground,
-        sendBackground() {
-            if (submitted || !ready || !validPrepared()) return false;
-            submitted = true;
-            const options = {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true};
-            editor.dispatchEvent(new KeyboardEvent('keydown', options));
-            editor.dispatchEvent(new KeyboardEvent('keyup', options));
+        beginNativePreparation(token) {
+            if (token !== config.token || !ready || submitted || !validEmpty()) return false;
+            const checkPrepared = () => {
+                if (!ready) return;
+                if (!sameChannel()) { stop(); emit('wrong_channel'); return; }
+                if (Date.now() >= config.deadline) { stop(); emit('expired'); return; }
+                if (!validPrepared()) return;
+                observer.disconnect(); clearInterval(fallback); clearTimeout(timer);
+                emit('prepared');
+            };
+            observer = new MutationObserver(checkPrepared);
+            observer.observe(editor, {subtree: true, childList: true, characterData: true});
+            fallback = setInterval(checkPrepared, 16);
+            timer = setTimeout(() => { stop(); emit('prepare_failed'); }, 2000);
             return true;
         },
-        sendReserved(token) {
-            // Only native code authorizes this after persisting the daily reservation.
+        authorizeNativeSend(token) {
+            // Native text input updates Discord's editor state. Reserve before real Enter.
             if (token !== config.token || !ready || submitted || !window.DMA.beforeSend()) return false;
-            if (!window.DMA.sendBackground()) return false;
-            emit('sent', {elapsed: performance.now() - started});
+            submitted = true;
             return true;
+        },
+        nativeSent(token) {
+            if (token !== config.token || !submitted || !ready) return;
+            emit('sent', {elapsed: performance.now() - started});
         },
         install(options) {
             stop(); config = options; submitted = false;

@@ -15,7 +15,7 @@ public final class WatchService extends Service {
     @Override public void onCreate() {
         super.onCreate();
         getSystemService(NotificationManager.class).createNotificationChannel(
-            new NotificationChannel("watch", "Surveillance du salon", NotificationManager.IMPORTANCE_LOW));
+            new NotificationChannel("watch", "Channel watching", NotificationManager.IMPORTANCE_LOW));
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -30,10 +30,10 @@ public final class WatchService extends Service {
         PendingIntent stop = PendingIntent.getService(this, 1, new Intent(this, WatchService.class)
             .setAction("stop"), PendingIntent.FLAG_IMMUTABLE);
         startForeground(1, new Notification.Builder(this, "watch")
-            .setSmallIcon(android.R.drawable.ic_popup_sync).setContentTitle("Surveillance Discord active")
-            .setContentText("Continue en arrière-plan jusqu’à la fin de la fenêtre")
+            .setSmallIcon(android.R.drawable.ic_popup_sync).setContentTitle("Watching your Discord channel")
+            .setContentText("Waiting for an opening. Tap to return to the app.")
             .setContentIntent(open).setOngoing(true)
-            .addAction(new Notification.Action.Builder(null, "Arrêter", stop).build()).build());
+            .addAction(new Notification.Action.Builder(null, "Stop watching", stop).build()).build());
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
         wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "discordmobile:watch");
         wakeLock.acquire(remaining + 15000);
