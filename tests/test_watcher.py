@@ -31,8 +31,8 @@ class WatcherTests(unittest.TestCase):
     def tearDown(self):
         self.page.close()
 
-    def install(self, preview=False, deadline=None):
-        self.page.evaluate("options => DMA.install({...options,deadline: options.deadline ?? Date.now()+10000})", dict(url=URL, message="Check-in ✅", token="session-one", preview=preview, deadline=deadline))
+    def install(self, preview=False, deadline=None, fast=False):
+        self.page.evaluate("options => DMA.install({...options,deadline: options.deadline ?? Date.now()+10000})", dict(url=URL, message="Check-in ✅", token="session-one", preview=preview, deadline=deadline, fast=fast))
 
     def open_editor(self):
         self.page.evaluate("document.querySelector('[role=textbox]').style.display='block'")
@@ -90,6 +90,37 @@ class WatcherTests(unittest.TestCase):
         self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
         self.page.evaluate("history.pushState({},'', '/channels/123/999')")
         self.assertFalse(self.page.evaluate("DMA.sendBackground()"))
+
+    def test_fast_path_prepares_on_detection_but_waits_for_reservation(self):
+        self.install(fast=True); self.open_editor(); self.event("prepared")
+        self.assertEqual("Check-in ✅", self.page.locator("[role=textbox]").inner_text())
+        self.assertEqual(["prepared"], self.page.evaluate("events.map(e=>e.type)"))
+        self.assertFalse(self.page.evaluate("DMA.sendReserved('old-token')"))
+        self.page.evaluate("""window.sends=0;document.addEventListener('keydown', e => {
+            if(e.key==='Enter' && !e.defaultPrevented) {
+                sends++;document.querySelector('#messages').innerHTML='<li id="chat-messages-1"><div id="message-content-1">Check-in ✅</div></li>';
+            }
+        });""")
+        self.assertTrue(self.page.evaluate("DMA.sendReserved('session-one')"))
+        self.event("confirmed")
+        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
+        self.assertEqual(1, self.page.evaluate("sends"))
+        self.assertEqual(["prepared", "sent", "confirmed"], self.page.evaluate("events.map(e=>e.type)"))
+
+    def test_fast_path_preserves_draft_and_preview_never_inserts(self):
+        self.install(fast=True, preview=True); self.open_editor(); self.event("preview")
+        self.assertEqual("", self.page.locator("[role=textbox]").inner_text())
+        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Keep this'")
+        self.install(fast=True); self.event("draft")
+        self.assertEqual("Keep this", self.page.locator("[role=textbox]").inner_text())
+
+    def test_fast_path_rechecks_modified_draft_and_cancellation(self):
+        self.install(fast=True); self.open_editor(); self.event("prepared")
+        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Changed'")
+        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
+        self.page.evaluate("DMA.stop()")
+        self.assertFalse(self.page.evaluate("DMA.sendReserved('session-one')"))
+        self.assertEqual(["prepared"], self.page.evaluate("events.map(e=>e.type)"))
 
     def test_existing_draft_preserved(self):
         self.page.evaluate("document.querySelector('[role=textbox]').textContent='Do not overwrite'")
