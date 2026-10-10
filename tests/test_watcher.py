@@ -59,6 +59,38 @@ class WatcherTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("document.activeElement.matches('[role=textbox]')"))
         self.assertEqual(["preview"], self.page.evaluate("events.map(e=>e.type)"))
 
+    def test_background_edit_emits_input_and_enter_confirms_once(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.evaluate("""window.inputs=0; window.sends=0;
+            document.addEventListener('input', () => inputs++);
+            document.addEventListener('keydown', e => {
+                if(e.key==='Enter' && !e.defaultPrevented) {
+                    sends++;
+                    document.querySelector('#messages').innerHTML='<li id="chat-messages-1"><div id="message-content-1">'+document.querySelector('[role=textbox]').innerText+'</div></li>';
+                }
+            });""")
+        self.assertTrue(self.page.evaluate("DMA.insertBackground()"))
+        self.assertGreater(self.page.evaluate("inputs"), 0)
+        self.assertFalse(self.page.evaluate("DMA.insertBackground()"))
+        self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
+        self.assertTrue(self.page.evaluate("DMA.sendBackground()"))
+        self.event("confirmed")
+        self.assertEqual(1, self.page.evaluate("sends"))
+
+    def test_background_edit_preserves_a_new_draft(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.evaluate("document.querySelector('[role=textbox]').textContent='Keep my draft'")
+        self.assertFalse(self.page.evaluate("DMA.insertBackground()"))
+        self.assertEqual("Keep my draft", self.page.locator("[role=textbox]").inner_text())
+        self.assertFalse(self.page.evaluate("DMA.sendBackground()"))
+
+    def test_background_send_rejects_changed_channel(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.assertTrue(self.page.evaluate("DMA.insertBackground()"))
+        self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
+        self.page.evaluate("history.pushState({},'', '/channels/123/999')")
+        self.assertFalse(self.page.evaluate("DMA.sendBackground()"))
+
     def test_existing_draft_preserved(self):
         self.page.evaluate("document.querySelector('[role=textbox]').textContent='Do not overwrite'")
         self.install(); self.open_editor(); self.event("draft")
