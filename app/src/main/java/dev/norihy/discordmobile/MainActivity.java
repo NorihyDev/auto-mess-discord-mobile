@@ -68,6 +68,10 @@ public final class MainActivity extends Activity {
         } catch (IOException e) { throw new IllegalStateException("Missing watcher asset", e); }
         createUi();
         configureWebView();
+        if (Build.VERSION.SDK_INT >= 33) getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+            android.window.OnBackInvokedDispatcher.PRIORITY_DEFAULT, () -> {
+                if (active()) moveTaskToBack(true); else finish();
+            });
         showStatus("Prêt à configurer", "Une session locale · un seul essai par salon et par jour");
     }
 
@@ -113,11 +117,16 @@ public final class MainActivity extends Activity {
         LinearLayout left = column(), right = column(); offsets.addView(left, new LinearLayout.LayoutParams(0, -2, 1)); offsets.addView(right, new LinearLayout.LayoutParams(0, -2, 1));
         before = field(left, "Minutes avant", "5", prefs.getString("before", "5")); after = field(right, "Minutes après", "15", prefs.getString("after", "15"));
         before.setInputType(2); after.setInputType(2);
-        TextView info = label("Garde l’application ouverte au premier plan. L’écran reste allumé pendant la surveillance. Un brouillon existant arrête l’envoi.", 12, 0xffa7b1cd); info.setPadding(0, dp(14), 0, dp(12)); fields.addView(info);
+        TextView info = label("La surveillance continue en arrière-plan avec une notification. Ne force pas l’arrêt de l’application. Un brouillon existant arrête l’envoi.", 12, 0xffa7b1cd); info.setPadding(0, dp(14), 0, dp(12)); fields.addView(info);
         TextView policy = label("Discord interdit l’automatisation des comptes personnels et peut sanctionner le compte. Lire la règle officielle ↗", 12, 0xff8da2ff); fields.addView(policy);
         policy.setOnClickListener(view -> openExternal(Uri.parse("https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots")));
         root.addView(form, new LinearLayout.LayoutParams(-1, 0, 1));
-        web = new WebView(this); web.setVisibility(View.GONE); root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
+        web = new WebView(this) {
+            @Override protected void onWindowVisibilityChanged(int visibility) {
+                // Keep Chromium's page scheduler active while the foreground service is running.
+                super.onWindowVisibilityChanged(active() ? View.VISIBLE : visibility);
+            }
+        }; web.setVisibility(View.GONE); root.addView(web, new LinearLayout.LayoutParams(-1, 0, 1));
         connect = button("1  ·  Connexion Discord", 0xff25324f); root.addView(connect);
         connect.setOnClickListener(view -> { WatchConfig c = readConfig(); if (c != null) { save(c); browser(); web.loadUrl(c.url); showStatus("Connexion manuelle", "Termine la connexion et la 2FA dans Discord, puis lance une vérification."); } });
         LinearLayout actions = new LinearLayout(this); root.addView(actions);
@@ -148,6 +157,7 @@ public final class MainActivity extends Activity {
     @SuppressLint("SetJavaScriptEnabled")
     private void configureWebView() {
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG);
+        web.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false);
         WebSettings s = web.getSettings(); s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true);
         s.setAllowFileAccess(false); s.setAllowContentAccess(false); s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         s.setUseWideViewPort(true); s.setLoadWithOverviewMode(true); s.setBuiltInZoomControls(true); s.setDisplayZoomControls(false);
@@ -207,8 +217,19 @@ public final class MainActivity extends Activity {
         window = previewOnly ? new WatchConfig.Window(now.atZone(c.zone).toLocalDate().toString(), now, now.plusSeconds(c.after * 60L)) : c.window(now);
         day = window.day();
         if (!previewOnly && blocked()) { showStatus("Déjà tenté pour cette journée", "Vérifie le salon. Aucun deuxième envoi automatique."); return; }
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 10);
+            showStatus("Notifications requises", "Autorise les notifications, puis relance la surveillance."); return;
+        }
+        WatchService.onStopRequested = () -> finish("Surveillance arrêtée", "Arrêt demandé depuis la notification ou fin de la fenêtre.");
+        try {
+            startForegroundService(new Intent(this, WatchService.class).putExtra("deadline", window.end().toEpochMilli()));
+        } catch (RuntimeException e) {
+            WatchService.onStopRequested = null;
+            showStatus("Arrière-plan indisponible", "Relance la surveillance depuis l’application ouverte."); return;
+        }
         phase = "armed"; token = UUID.randomUUID().toString(); installed = false;
-        browser(); controls(true); getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        browser(); controls(true);
         String address = web.getUrl();
         if (address == null || !address.replaceAll("/$", "").equals(c.url)) web.loadUrl(c.url);
         log(previewOnly ? "Vérification sans envoi démarrée." : "Surveillance armée pour " + day + " (" + c.zone + ").");
@@ -218,19 +239,19 @@ public final class MainActivity extends Activity {
         arm.setText(running ? "Arrêter" : "Surveiller"); preview.setEnabled(!running); connect.setEnabled(!running); settings.setEnabled(!running);
     }
     private void install() {
-        if (!foreground || !phase.equals("armed") || (!previewMode && blocked())) return;
+        if (!phase.equals("armed") || (!previewMode && blocked())) return;
         if (!config.url.equals(web.getUrl() == null ? "" : web.getUrl().replaceAll("/$", ""))) {
             showStatus("Connexion ou salon requis", "Connecte-toi et ouvre le salon prévu dans Discord."); return;
         }
         installed = true;
         try {
             JSONObject options = new JSONObject().put("url", config.url).put("message", config.message).put("token", token).put("deadline", window.end().toEpochMilli()).put("preview", previewMode);
-            showStatus(previewMode ? "Vérification en cours" : "À l’écoute du salon", "Détection DOM active · garde cette vue ouverte");
+            showStatus(previewMode ? "Vérification en cours" : "À l’écoute du salon", "Détection active · arrière-plan autorisé");
             web.evaluateJavascript(script + "\nwindow.DMA.install(" + options + ");", null);
         } catch (Exception e) { finish("Surveillance indisponible", "Vérifie la configuration et relance."); }
     }
     private boolean eligible(String run, String expectedPhase) {
-        return foreground && Objects.equals(token, run) && phase.equals(expectedPhase) && window.active(Instant.now()) &&
+        return Objects.equals(token, run) && phase.equals(expectedPhase) && window.active(Instant.now()) &&
             config.url.equals(web.getUrl() == null ? "" : web.getUrl().replaceAll("/$", ""));
     }
     private void onEvent(JSONObject event) {
@@ -259,29 +280,46 @@ public final class MainActivity extends Activity {
         web.evaluateJavascript("Boolean(window.DMA && window.DMA.validEmpty())", empty -> {
             if (!eligible(run, "preparing")) { abortCallback(run); return; }
             if (!"true".equals(empty)) { finish("Brouillon ou focus modifié", "Aucun envoi. Vérifie le salon."); return; }
-            InputConnection connection = web.onCreateInputConnection(new EditorInfo());
-            if (connection == null || !connection.commitText(config.message, 1)) { finish("Saisie native indisponible", "Aucun envoi. Vérifie le brouillon."); return; }
+            if (!foreground) {
+                web.evaluateJavascript("Boolean(window.DMA && window.DMA.insertBackground())", inserted -> {
+                    if (!eligible(run, "preparing")) { abortCallback(run); return; }
+                    if (!"true".equals(inserted)) { finish("Saisie en arrière-plan indisponible", "Aucun envoi. Vérifie le brouillon."); return; }
+                    sendPrepared(run, true);
+                });
+            } else {
+                InputConnection connection = web.onCreateInputConnection(new EditorInfo());
+                if (connection == null || !connection.commitText(config.message, 1)) { finish("Saisie native indisponible", "Aucun envoi. Vérifie le brouillon."); return; }
+                sendPrepared(run, false);
+            }
+        });
+    }
+    private void sendPrepared(String run, boolean backgroundInput) {
             web.evaluateJavascript("Boolean(window.DMA && window.DMA.beforeSend())", prepared -> {
                 if (!eligible(run, "preparing")) { abortCallback(run); return; }
                 if (!"true".equals(prepared)) { finish("Message préparé différent", "Aucun appui sur Entrée. Vérifie le brouillon."); return; }
                 if (blocked() || !prefs.edit().putString(stateKey(), "reserved").commit()) { finish("Réservation impossible", "Aucun appui sur Entrée."); return; }
                 if (!eligible(run, "preparing")) { finish("Fenêtre terminée", "Réservation conservée ; aucun appui sur Entrée."); return; }
                 phase = "confirming";
-                web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
-                web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
+                if (backgroundInput || !foreground) web.evaluateJavascript("window.DMA && window.DMA.sendBackground()", null);
+                else {
+                    web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
+                    web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
+                }
                 long elapsed = SystemClock.elapsedRealtime() - preparationStarted;
                 log("Préparation et Entrée : " + elapsed + " ms.");
                 showStatus("Entrée envoyée · confirmation…", elapsed + " ms de préparation · aucun nouvel essai automatique");
             });
-        });
     }
     private void abortCallback(String run) {
-        if (active() && Objects.equals(token, run)) finish("Préparation interrompue", "Le salon, la fenêtre ou le premier plan a changé. Vérifie le brouillon.");
+        if (active() && Objects.equals(token, run)) finish("Préparation interrompue", "Le salon ou la fenêtre a changé. Vérifie le brouillon.");
     }
     private void finish(String title, String explanation) {
+        WatchService.onStopRequested = null;
+        stopService(new Intent(this, WatchService.class));
         phase = "idle"; token = null; installed = false; handler.removeCallbacks(tick);
         if (web != null) web.evaluateJavascript("window.DMA && window.DMA.stop()", null);
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON); controls(false); showStatus(title, explanation); log(title + ". " + explanation);
+        if (web != null && !foreground) web.onPause();
+        controls(false); showStatus(title, explanation); log(title + ". " + explanation);
     }
     private void showStatus(String title, String explanation) { status.setText(title); detail.setText(explanation); }
     private void log(String text) {
@@ -291,8 +329,9 @@ public final class MainActivity extends Activity {
     @Override protected void onResume() { super.onResume(); foreground = true; web.onResume(); }
     @Override protected void onPause() {
         foreground = false;
-        if (active()) finish("Surveillance suspendue", "L’application a quitté le premier plan. Relance la surveillance manuellement.");
-        CookieManager.getInstance().flush(); web.onPause(); super.onPause();
+        CookieManager.getInstance().flush(); if (!active()) web.onPause(); super.onPause();
     }
-    @Override protected void onDestroy() { handler.removeCallbacksAndMessages(null); web.destroy(); super.onDestroy(); }
+    @SuppressLint("GestureBackNavigation") // API 33+ uses the registered OnBackInvokedCallback.
+    @Override public void onBackPressed() { if (active()) moveTaskToBack(true); else super.onBackPressed(); }
+    @Override protected void onDestroy() { if (active()) finish("Surveillance arrêtée", "Activité détruite. Relance manuellement la surveillance."); handler.removeCallbacksAndMessages(null); web.destroy(); super.onDestroy(); }
 }
