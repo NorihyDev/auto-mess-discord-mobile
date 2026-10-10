@@ -9,7 +9,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.view.*;
-import android.view.inputmethod.*;
+import android.view.inputmethod.InputMethodManager;
 import android.webkit.*;
 import android.widget.*;
 import androidx.webkit.WebViewCompat;
@@ -36,7 +36,6 @@ public final class MainActivity extends Activity {
     private WatchConfig.Window window;
     private String token, script, day, phase = "idle";
     private boolean foreground, loaded, installed, previewMode, bridgeSupported;
-    private long preparationStarted;
     private final ArrayDeque<String> events = new ArrayDeque<>();
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -245,7 +244,7 @@ public final class MainActivity extends Activity {
         }
         installed = true;
         try {
-            JSONObject options = new JSONObject().put("url", config.url).put("message", config.message).put("token", token).put("deadline", window.end().toEpochMilli()).put("preview", previewMode);
+            JSONObject options = new JSONObject().put("url", config.url).put("message", config.message).put("token", token).put("deadline", window.end().toEpochMilli()).put("preview", previewMode).put("fast", true);
             showStatus(previewMode ? "Vérification en cours" : "À l’écoute du salon", "Détection active · arrière-plan autorisé");
             web.evaluateJavascript(script + "\nwindow.DMA.install(" + options + ");", null);
         } catch (Exception e) { finish("Surveillance indisponible", "Vérifie la configuration et relance."); }
@@ -256,12 +255,19 @@ public final class MainActivity extends Activity {
     }
     private void onEvent(JSONObject event) {
         switch (event.optString("type")) {
-            case "ready": if (!previewMode && phase.equals("armed")) prepare(); break;
+            case "prepared": if (!previewMode && phase.equals("armed")) sendFast(); break;
             case "preview": if (previewMode) finish("Salon ouvert · vérification réussie", "Aucun texte inséré, aucun message envoyé, aucune réservation."); break;
             case "draft": finish("Brouillon existant", "Le brouillon est conservé. Aucun envoi."); break;
             case "prepare_failed": finish("Préparation interrompue", "Aucun appui sur Entrée. Vérifie le brouillon et le focus."); break;
             case "wrong_channel": finish("Le salon a changé", "Aucun envoi dans un autre salon."); break;
             case "expired": finish("Fenêtre terminée", "Aucun nouvel essai automatique."); break;
+            case "sent":
+                if (phase.equals("confirming")) {
+                    String elapsed = String.format(Locale.FRANCE, "%.1f ms", event.optDouble("elapsed"));
+                    log("Détection → Entrée : " + elapsed + " (page locale).");
+                    showStatus("Entrée envoyée · confirmation…", elapsed + " depuis la détection · aucun nouvel essai automatique");
+                }
+                break;
             case "confirmed":
                 if (phase.equals("confirming")) {
                     prefs.edit().putString(stateKey(), "confirmed").apply();
@@ -272,46 +278,20 @@ public final class MainActivity extends Activity {
             default: break;
         }
     }
-    private void prepare() {
+    private void sendFast() {
         String run = token;
         if (!eligible(run, "armed") || blocked()) { finish("Envoi interrompu", "Fenêtre, salon ou réservation modifiés."); return; }
-        phase = "preparing"; preparationStarted = SystemClock.elapsedRealtime();
-        web.requestFocus();
-        web.evaluateJavascript("Boolean(window.DMA && window.DMA.validEmpty())", empty -> {
-            if (!eligible(run, "preparing")) { abortCallback(run); return; }
-            if (!"true".equals(empty)) { finish("Brouillon ou focus modifié", "Aucun envoi. Vérifie le salon."); return; }
-            if (!foreground) {
-                web.evaluateJavascript("Boolean(window.DMA && window.DMA.insertBackground())", inserted -> {
-                    if (!eligible(run, "preparing")) { abortCallback(run); return; }
-                    if (!"true".equals(inserted)) { finish("Saisie en arrière-plan indisponible", "Aucun envoi. Vérifie le brouillon."); return; }
-                    sendPrepared(run, true);
-                });
-            } else {
-                InputConnection connection = web.onCreateInputConnection(new EditorInfo());
-                if (connection == null || !connection.commitText(config.message, 1)) { finish("Saisie native indisponible", "Aucun envoi. Vérifie le brouillon."); return; }
-                sendPrepared(run, false);
-            }
+        if (!prefs.edit().putString(stateKey(), "reserved").commit()) {
+            finish("Réservation impossible", "Aucun appui sur Entrée."); return;
+        }
+        if (!eligible(run, "armed")) {
+            finish("Fenêtre terminée", "Réservation conservée ; aucun appui sur Entrée."); return;
+        }
+        phase = "confirming";
+        web.evaluateJavascript("Boolean(window.DMA && window.DMA.sendReserved(" + JSONObject.quote(run) + "))", sent -> {
+            if (!active() || !Objects.equals(token, run)) return;
+            if (!"true".equals(sent)) finish("Envoi interrompu", "Brouillon, focus ou salon modifié. Réservation conservée ; aucun nouvel essai.");
         });
-    }
-    private void sendPrepared(String run, boolean backgroundInput) {
-            web.evaluateJavascript("Boolean(window.DMA && window.DMA.beforeSend())", prepared -> {
-                if (!eligible(run, "preparing")) { abortCallback(run); return; }
-                if (!"true".equals(prepared)) { finish("Message préparé différent", "Aucun appui sur Entrée. Vérifie le brouillon."); return; }
-                if (blocked() || !prefs.edit().putString(stateKey(), "reserved").commit()) { finish("Réservation impossible", "Aucun appui sur Entrée."); return; }
-                if (!eligible(run, "preparing")) { finish("Fenêtre terminée", "Réservation conservée ; aucun appui sur Entrée."); return; }
-                phase = "confirming";
-                if (backgroundInput || !foreground) web.evaluateJavascript("window.DMA && window.DMA.sendBackground()", null);
-                else {
-                    web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
-                    web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
-                }
-                long elapsed = SystemClock.elapsedRealtime() - preparationStarted;
-                log("Préparation et Entrée : " + elapsed + " ms.");
-                showStatus("Entrée envoyée · confirmation…", elapsed + " ms de préparation · aucun nouvel essai automatique");
-            });
-    }
-    private void abortCallback(String run) {
-        if (active() && Objects.equals(token, run)) finish("Préparation interrompue", "Le salon ou la fenêtre a changé. Vérifie le brouillon.");
     }
     private void finish(String title, String explanation) {
         WatchService.onStopRequested = null;

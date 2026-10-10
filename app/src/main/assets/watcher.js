@@ -4,7 +4,7 @@
     const selector = 'main [role="textbox"][contenteditable="true"][data-slate-editor="true"]';
     const rows = 'li[id^="chat-messages-"]';
     const normalize = text => text.replace(/[\uFEFF\u200B]/g, '').trim().replace(/\s+/g, ' ');
-    let config, observer, fallback, timer, editor, previous, ready = false, started;
+    let config, observer, fallback, timer, editor, previous, ready = false, started, submitted = false;
     let inputGuard, enterGuard;
     const emit = (type, extra = {}) => DiscordMobile.postMessage(JSON.stringify({token: config.token, type, ...extra}));
     const sameChannel = () => location.href.replace(/\/$/, '') === config.url;
@@ -40,6 +40,7 @@
         if (!sameChannel()) { stop(); emit('wrong_channel'); return; }
         editor = current();
         if (!editor) return;
+        started = performance.now();
         if (config.preview) { stop(); emit('preview'); return; }
         if (normalize(editor.innerText)) { stop(); emit('draft'); return; }
         editor.focus({preventScroll: true});
@@ -53,9 +54,12 @@
                 !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) event.preventDefault();
         };
         document.addEventListener('beforeinput', inputGuard, {capture: true, once: true});
-        ready = true; started = performance.now();
+        ready = true;
         observer.disconnect(); clearInterval(fallback); clearTimeout(timer);
-        emit('ready');
+        if (config.fast) {
+            if (!insertBackground()) { stop(); emit('prepare_failed'); return; }
+            emit('prepared');
+        } else emit('ready');
     }
     function confirmation() {
         if (!sameChannel()) { stop(); emit('uncertain'); return; }
@@ -68,25 +72,34 @@
             }
         }
     }
+    function insertBackground() {
+        if (!validEmpty()) return false;
+        // Chromium editing commands emit input events consumed by Slate/React.
+        // Never replace innerHTML: that would bypass the application's editor state.
+        return document.execCommand('insertText', false, config.message) && validPrepared();
+    }
     window.DMA = {
         stop,
         validEmpty,
         validPrepared,
-        insertBackground() {
-            if (!validEmpty()) return false;
-            // Chromium editing commands emit input events consumed by Slate/React.
-            // Never replace innerHTML: that would bypass the application's editor state.
-            return document.execCommand('insertText', false, config.message) && validPrepared();
-        },
+        insertBackground,
         sendBackground() {
-            if (!validPrepared()) return false;
+            if (submitted || !ready || !validPrepared()) return false;
+            submitted = true;
             const options = {key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true};
             editor.dispatchEvent(new KeyboardEvent('keydown', options));
             editor.dispatchEvent(new KeyboardEvent('keyup', options));
             return true;
         },
+        sendReserved(token) {
+            // Only native code authorizes this after persisting the daily reservation.
+            if (token !== config.token || !ready || submitted || !window.DMA.beforeSend()) return false;
+            if (!window.DMA.sendBackground()) return false;
+            emit('sent', {elapsed: performance.now() - started});
+            return true;
+        },
         install(options) {
-            stop(); config = options;
+            stop(); config = options; submitted = false;
             observer = new MutationObserver(check);
             observer.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
             fallback = setInterval(check, 16);
