@@ -21,7 +21,7 @@ $env:DMA_LICENSE_URL = 'https://message-auto-licenses.YOURNAME.workers.dev'
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The signed APK will be in `artifacts/discord-message-auto-1.4.0.apk`. Give each person a different activation key. A key binds to its first activated phone. The admin page lists phones after activation and can revoke their keys. Back up the D1 database and the Android release signing directory; never commit the admin token or signing material.
+The signed APK will be in `artifacts/discord-message-auto-1.4.1.apk`. Give each person a different activation key. A key binds to its first activated phone. The admin page lists phones after activation and can revoke their keys. Back up the D1 database and the Android release signing directory; never commit the admin token or signing material.
 
 The Worker and D1 have free-plan limits. Each active phone checks approximately every 30 seconds while watching. Revocation takes effect at the next check, or before a new session. See [Cloudflare Workers limits](https://developers.cloudflare.com/workers/platform/limits/) and [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/). For production use that cannot tolerate interruptions, review the platform limits and use a custom domain when available.
 

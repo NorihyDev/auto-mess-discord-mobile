@@ -40,3 +40,9 @@ compatibility and overnight/Doze behavior still need separate verification.
 On 2026-10-10, an authorized test in a dedicated Discord channel reproduced the 1.2 failure: `execCommand` displayed the draft in a Slate zero-width leaf, but Enter did not publish it. Native text input updated the editor state and native Enter published the message.
 
 The corrected Android app observed exactly one test message 106 ms after editor detection following a permission change. The message remained after a channel reload. This measures one page observation in foreground, not server acceptance latency, permission propagation time or overnight reliability. The corrected native input path also passed the five existing device tests, including Home and screen-off sends. Previous 1.2 synthetic timing figures do not establish live Discord compatibility.
+
+## Version 1.4.1 preparation change
+
+The watcher now installs its draft observer before emitting `ready`. Android can commit native text as soon as it receives that event, without a separate `evaluateJavascript` call and callback. The final page validation after the durable daily reservation remains in place, since live Discord compatibility depends on the editor state having settled before native Enter.
+
+The CSS-only fallback requests a 1 ms interval. Chromium may clamp this to at least 4 ms or throttle background timers much more heavily. DOM mutations still run through the observer immediately when JavaScript is scheduled. This change increases CPU/battery use while waiting. The 21 isolated browser tests and Android build/lint pass, but no physical phone or emulator is currently available to measure detection-to-Enter latency for 1.4.1. A 20 ms bound, 1 ms polling cadence, first-place result or instantaneous Discord delivery cannot be guaranteed.

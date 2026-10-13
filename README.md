@@ -6,7 +6,7 @@ Lightweight native Android version of [discord-mess-auto](https://github.com/Nor
 
 ## Install and use
 
-1. Install the signed `discord-message-auto-1.4.0.apk` built with your HTTPS license server URL (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Enter the activation key given by the administrator before starting a session.
+1. Install the signed `discord-message-auto-1.4.1.apk` built with your HTTPS license server URL (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Enter the activation key given by the administrator before starting a session.
 2. Paste a full Discord channel link into **Channel**, then tap **Open Discord** and sign in manually. Complete 2FA or CAPTCHA normally. Tap **Back to setup** to return.
 3. Write **Your message** and tap **Edit** beside **Opening time** to choose the time and timezone.
 4. Tap **Check without sending** to verify channel readiness without inserting text or sending.
@@ -26,10 +26,12 @@ Defaults for a new install: `20:00`, the device's timezone, 5 minutes before and
 
 License checks occur before monitoring begins and every 30 seconds while it runs. No license request is made when the Discord editor opens, so activation does not add a network round trip to the send path. Opening-window scheduling now wakes at the precise start boundary rather than waiting for the next one-second status tick. Actual send latency still depends on the phone, Android WebView, the user's connection, and Discord; instantaneous delivery or server acceptance cannot be guaranteed.
 
+Version 1.4.1 arms the draft observer before notifying Android that the editor is writable, removing one asynchronous WebView evaluation before native text input. The CSS-only fallback requests a 1 ms interval while armed. Chromium can clamp it to 4 ms or throttle it further in the background; DOM mutations still trigger the observer without waiting for this timer. The faster fallback increases CPU and battery use during the active watch window. No 1.4.1 phone timing measurement is available, so a 20 ms reaction time is not established.
+
 - A single native activity and the installed Android System WebView; no JavaScript UI framework or bundled browser.
 - Preloaded channel and persisted local login before the monitoring window.
 - A `MutationObserver` detects editor changes directly in the page, then uses an origin-scoped WebView message callback. There is no repeated JavaScript/native readiness polling.
-- A 16 ms **target** fallback checks CSS visibility while actively waiting. It stops as soon as an editor is detected or the session ends.
+- A 1 ms **requested** fallback checks CSS visibility while actively waiting. Chromium may run it less often. It stops as soon as an editor is detected or the session ends.
 - Version 1.2.1 uses Android `InputConnection.commitText` to feed Discord's editor through native input, then dispatches native Enter after persisting the daily reservation. The page observes the asynchronously updated draft before authorizing Enter. The previous `execCommand` insertion could display text without updating Discord's editor state; synthetic Enter then left it unsent.
 - The desktop viewport stays at 980 CSS pixels so Discord's composer does not collapse to zero width on a phone. No `innerHTML` replacement or Discord token/API is used.
 - The release APK is reduced with R8 and resource shrinking. Runtime browser resources are supplied by Android System WebView.
@@ -75,7 +77,7 @@ $env:DMA_LICENSE_URL = 'https://licenses.example.com'
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.4.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
+The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.4.1.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
 
 GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration. Published release APKs use the maintained local release key.
 
