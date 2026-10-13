@@ -6,4 +6,4 @@ workers_dev = true
 [[d1_databases]]
 binding = "DB"
 database_name = "message-auto-licenses"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "29d7fb32-aa82-4944-98fe-3824eda32ffd"
