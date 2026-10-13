@@ -86,6 +86,9 @@
                 if (Date.now() >= config.deadline) { stop(); emit('expired'); return; }
                 if (!validPrepared()) return;
                 observer.disconnect(); clearInterval(fallback); clearTimeout(timer);
+                // Arm the Enter guard while still on the page. Android persists
+                // the daily reservation before it dispatches the key.
+                if (!window.DMA.authorizeNativeSend(config.token)) { stop(); emit('prepare_failed'); return; }
                 emit('prepared');
             };
             observer = new MutationObserver(checkPrepared);
@@ -99,10 +102,6 @@
             if (token !== config.token || !ready || submitted || !window.DMA.beforeSend()) return false;
             submitted = true;
             return true;
-        },
-        nativeSent(token) {
-            if (token !== config.token || !submitted || !ready) return;
-            emit('sent', {elapsed: performance.now() - started});
         },
         install(options) {
             stop(); config = options; submitted = false;
@@ -120,6 +119,8 @@
                 document.removeEventListener('keydown', enterGuard, true);
                 if (event.target !== editor || !validPrepared()) {
                     event.preventDefault(); event.stopImmediatePropagation();
+                } else {
+                    emit('sent', {elapsed: performance.now() - started});
                 }
             };
             document.addEventListener('keydown', enterGuard, {capture: true});

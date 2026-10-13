@@ -44,7 +44,7 @@ class WatcherTests(unittest.TestCase):
         self.install(); self.open_editor(); self.event("ready")
         self.assertTrue(self.page.evaluate("DMA.validEmpty()"))
         self.page.keyboard.insert_text("Check-in ✅")
-        self.assertTrue(self.page.evaluate("DMA.beforeSend()"))
+        self.event("prepared")
         self.page.evaluate("""document.querySelector('[role=textbox]').addEventListener('keydown', e => {
             if(e.key==='Enter' && !e.defaultPrevented) {
                 document.querySelector('#messages').innerHTML='<li id="chat-messages-1"><div id="message-content-1">Check-in ✅</div></li>';
@@ -79,8 +79,8 @@ class WatcherTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.page.keyboard.insert_text("Check-in \u2705")
         self.assertTrue(self.page.evaluate("DMA.validPrepared()"))
+        self.event("prepared")
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('old-token')"))
-        self.assertTrue(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.page.keyboard.press("Enter")
         self.event("confirmed")
@@ -118,13 +118,13 @@ class WatcherTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.assertEqual(["ready", "prepared"], self.page.evaluate("events.map(e=>e.type)"))
 
-    def test_native_sent_reports_timing_only_for_authorized_session(self):
+    def test_native_enter_reports_timing_only_after_preparation(self):
         self.install(); self.open_editor(); self.event("ready")
-        self.page.evaluate("DMA.nativeSent('session-one')")
         self.assertEqual(["ready"], self.page.evaluate("events.map(e=>e.type)"))
         self.page.keyboard.insert_text("Check-in \u2705")
-        self.assertTrue(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
-        self.page.evaluate("DMA.nativeSent('old-token');DMA.nativeSent('session-one')")
+        self.event("prepared")
+        self.assertEqual(["ready", "prepared"], self.page.evaluate("events.map(e=>e.type)"))
+        self.page.keyboard.press("Enter")
         self.assertEqual(["ready", "prepared", "sent"], self.page.evaluate("events.map(e=>e.type)"))
         self.assertGreaterEqual(self.page.evaluate("events[2].elapsed"), 0)
 

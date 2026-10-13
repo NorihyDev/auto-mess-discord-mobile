@@ -565,17 +565,26 @@ public final class MainActivity extends Activity {
                 if (!"true".equals(empty)) {
                     finish("Message preparation stopped", "Your draft or channel changed. Nothing sent."); return;
                 }
-                commitNativeText();
+                commitNativeText(run, false);
             });
             return;
         }
-        commitNativeText();
+        commitNativeText(run, true);
     }
-    private void commitNativeText() {
+    private void commitNativeText(String run, boolean allowFocusRetry) {
         InputConnection input = web.onCreateInputConnection(new EditorInfo());
-        if (input == null || !input.commitText(config.message, 1)) {
-            finish("Couldn't enter your message", "Nothing sent. Check the draft in Discord.");
+        if (input != null && input.commitText(config.message, 1)) return;
+        if (allowFocusRetry) {
+            web.evaluateJavascript("Boolean(window.DMA && window.DMA.validEmpty())", empty -> {
+                if (!eligible(run, "preparing")) return;
+                if (!"true".equals(empty)) {
+                    finish("Message preparation stopped", "Check the draft in Discord before trying again."); return;
+                }
+                commitNativeText(run, false);
+            });
+            return;
         }
+        finish("Couldn't enter your message", "Nothing sent. Check the draft in Discord.");
     }
     private void sendNative() {
         String run = token;
@@ -587,15 +596,8 @@ public final class MainActivity extends Activity {
             finish("Watch window ended", "Nothing sent. This attempt stays protected."); return;
         }
         phase = "confirming";
-        web.evaluateJavascript("Boolean(window.DMA && window.DMA.authorizeNativeSend(" + JSONObject.quote(run) + "))", authorized -> {
-            if (!active() || !Objects.equals(token, run)) return;
-            if (!"true".equals(authorized) || !eligible(run, "confirming")) {
-                finish("Sending stopped", "Your draft or channel changed. Check Discord before resetting the attempt."); return;
-            }
-            web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
-            web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
-            web.evaluateJavascript("window.DMA && window.DMA.nativeSent(" + JSONObject.quote(run) + ")", null);
-        });
+        web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER));
+        web.dispatchKeyEvent(new KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_ENTER));
     }
     private void finish(String title, String explanation) {
         WatchService.onStopRequested = null;

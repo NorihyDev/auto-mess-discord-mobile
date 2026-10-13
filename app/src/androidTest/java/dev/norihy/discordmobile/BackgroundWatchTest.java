@@ -77,11 +77,19 @@ public final class BackgroundWatchTest {
         Thread.sleep(500);
         assertEquals("One Enter in background; status=" + ((TextView)field("status")).getText(), "1", sent.get());
         assertTrue(((TextView)field("status")).getText().toString().startsWith("Message seen"));
+        @SuppressWarnings("unchecked")
+        java.util.Deque<String> journal = (java.util.Deque<String>)field("events");
+        assertTrue("Enter timing must be logged", journal.stream().anyMatch(line -> line.contains("Detection to Enter:")));
         assertEquals("confirmed", getInstrumentation().getTargetContext().getSharedPreferences("watcher", 0)
             .getString("attempt:" + URL + ":" + LocalDate.now(ZoneOffset.UTC), ""));
         AtomicReference<String> latency = new AtomicReference<>();
         ui(() -> web.evaluateJavascript("window.enterLatency", latency::set));
         Thread.sleep(200);
+        assertNotNull("Enter latency must be measured", latency.get());
+        android.os.Bundle timing = new android.os.Bundle();
+        timing.putString("opening_to_enter_ms", latency.get());
+        timing.putString("foreground", String.valueOf(field("foreground")));
+        getInstrumentation().sendStatus(0, timing);
         android.util.Log.i("DMA_BENCH", "opening_to_enter_ms=" + latency.get() + ", foreground=" + field("foreground"));
     }
     @Test public void testNotificationStop() throws Exception {
