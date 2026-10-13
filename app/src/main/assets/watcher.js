@@ -4,7 +4,7 @@
     const selector = 'main [role="textbox"][contenteditable="true"][data-slate-editor="true"]';
     const rows = 'li[id^="chat-messages-"]';
     const normalize = text => text.replace(/[\uFEFF\u200B]/g, '').trim().replace(/\s+/g, ' ');
-    let config, observer, fallback, timer, editor, previous, ready = false, started, submitted = false;
+    let config, observer, fallback, timer, editor, previous, ready = false, preparationArmed = false, started, submitted = false;
     let inputGuard, enterGuard;
     const emit = (type, extra = {}) => DiscordMobile.postMessage(JSON.stringify({token: config.token, type, ...extra}));
     const sameChannel = () => location.href.replace(/\/$/, '') === config.url;
@@ -24,7 +24,7 @@
         if (inputGuard) document.removeEventListener('beforeinput', inputGuard, true);
         if (enterGuard) document.removeEventListener('keydown', enterGuard, true);
         inputGuard = enterGuard = null;
-        ready = false;
+        ready = preparationArmed = false;
     }
     function validEmpty() {
         return Date.now() < config.deadline && current() === editor &&
@@ -56,6 +56,9 @@
         document.addEventListener('beforeinput', inputGuard, {capture: true, once: true});
         ready = true;
         observer.disconnect(); clearInterval(fallback); clearTimeout(timer);
+        // Arm the draft observer before notifying Android, so native text input
+        // can start immediately without an extra evaluateJavascript round trip.
+        if (!window.DMA.beginNativePreparation(config.token)) { stop(); emit('prepare_failed'); return; }
         emit('ready');
     }
     function confirmation() {
@@ -75,6 +78,8 @@
         validPrepared,
         beginNativePreparation(token) {
             if (token !== config.token || !ready || submitted || !validEmpty()) return false;
+            if (preparationArmed) return true;
+            preparationArmed = true;
             const checkPrepared = () => {
                 if (!ready) return;
                 if (!sameChannel()) { stop(); emit('wrong_channel'); return; }
@@ -85,7 +90,7 @@
             };
             observer = new MutationObserver(checkPrepared);
             observer.observe(editor, {subtree: true, childList: true, characterData: true});
-            fallback = setInterval(checkPrepared, 16);
+            fallback = setInterval(checkPrepared, 1);
             timer = setTimeout(() => { stop(); emit('prepare_failed'); }, 2000);
             return true;
         },
@@ -103,7 +108,8 @@
             stop(); config = options; submitted = false;
             observer = new MutationObserver(check);
             observer.observe(document, {subtree: true, childList: true, attributes: true, characterData: true});
-            fallback = setInterval(check, 16);
+            // Best-effort CSS-only fallback. Chromium may clamp/throttle timers.
+            fallback = setInterval(check, 1);
             timer = setTimeout(check, Math.max(1, config.deadline - Date.now()));
             check();
         },

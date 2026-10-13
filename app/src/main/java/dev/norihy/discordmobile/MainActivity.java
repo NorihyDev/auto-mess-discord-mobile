@@ -556,14 +556,11 @@ public final class MainActivity extends Activity {
         if (!eligible(run, "armed") || blocked()) return;
         phase = "preparing";
         web.requestFocus();
-        web.evaluateJavascript("Boolean(window.DMA && window.DMA.beginNativePreparation(" + JSONObject.quote(run) + "))", empty -> {
-            if (!eligible(run, "preparing")) return;
-            if (!"true".equals(empty)) { finish("Message preparation stopped", "Your draft or channel changed. Nothing sent."); return; }
-            InputConnection input = web.onCreateInputConnection(new EditorInfo());
-            if (input == null || !input.commitText(config.message, 1)) {
-                finish("Couldn't enter your message", "Nothing sent. Check the draft in Discord."); return;
-            }
-        });
+        if (!eligible(run, "preparing")) return;
+        InputConnection input = web.onCreateInputConnection(new EditorInfo());
+        if (input == null || !input.commitText(config.message, 1)) {
+            finish("Couldn't enter your message", "Nothing sent. Check the draft in Discord.");
+        }
     }
     private void sendNative() {
         String run = token;

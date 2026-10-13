@@ -97,6 +97,12 @@ class WatcherTests(unittest.TestCase):
         self.page.evaluate("DMA.stop()")
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
 
+    def test_native_input_can_follow_ready_without_page_round_trip(self):
+        self.install(); self.open_editor(); self.event("ready")
+        self.page.keyboard.insert_text("Check-in \u2705")
+        self.event("prepared")
+        self.assertEqual(["ready", "prepared"], self.page.evaluate("events.map(e=>e.type)"))
+
     def test_native_send_rejects_changed_channel(self):
         self.install(); self.open_editor(); self.event("ready")
         self.page.keyboard.insert_text("Check-in \u2705")
@@ -110,7 +116,7 @@ class WatcherTests(unittest.TestCase):
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.page.evaluate("DMA.stop()")
         self.assertFalse(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
-        self.assertEqual(["ready"], self.page.evaluate("events.map(e=>e.type)"))
+        self.assertEqual(["ready", "prepared"], self.page.evaluate("events.map(e=>e.type)"))
 
     def test_native_sent_reports_timing_only_for_authorized_session(self):
         self.install(); self.open_editor(); self.event("ready")
@@ -119,8 +125,8 @@ class WatcherTests(unittest.TestCase):
         self.page.keyboard.insert_text("Check-in \u2705")
         self.assertTrue(self.page.evaluate("DMA.authorizeNativeSend('session-one')"))
         self.page.evaluate("DMA.nativeSent('old-token');DMA.nativeSent('session-one')")
-        self.assertEqual(["ready", "sent"], self.page.evaluate("events.map(e=>e.type)"))
-        self.assertGreaterEqual(self.page.evaluate("events[1].elapsed"), 0)
+        self.assertEqual(["ready", "prepared", "sent"], self.page.evaluate("events.map(e=>e.type)"))
+        self.assertGreaterEqual(self.page.evaluate("events[2].elapsed"), 0)
 
     def test_existing_draft_preserved(self):
         self.page.evaluate("document.querySelector('[role=textbox]').textContent='Do not overwrite'")
