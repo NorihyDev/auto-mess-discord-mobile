@@ -43,6 +43,10 @@ The corrected Android app observed exactly one test message 106 ms after editor 
 
 ## Version 1.4.1 preparation change
 
-The watcher now installs its draft observer before emitting `ready`. Android can commit native text as soon as it receives that event, without a separate `evaluateJavascript` call and callback. The final page validation after the durable daily reservation remains in place, since live Discord compatibility depends on the editor state having settled before native Enter.
+The watcher now installs its draft observer before emitting `ready`. Android can commit native text as soon as it receives that event in the foreground, without a separate `evaluateJavascript` call and callback. The final page validation after the durable daily reservation remains in place, since live Discord compatibility depends on the editor state having settled before native Enter.
 
-The CSS-only fallback requests a 1 ms interval. Chromium may clamp this to at least 4 ms or throttle background timers much more heavily. DOM mutations still run through the observer immediately when JavaScript is scheduled. This change increases CPU/battery use while waiting. The 21 isolated browser tests and Android build/lint pass, but no physical phone or emulator is currently available to measure detection-to-Enter latency for 1.4.1. A 20 ms bound, 1 ms polling cadence, first-place result or instantaneous Discord delivery cannot be guaranteed.
+The CSS-only fallback requests a 1 ms interval. Chromium may clamp this to at least 4 ms or throttle background timers much more heavily. DOM mutations still run through the observer immediately when JavaScript is scheduled. This change increases CPU/battery use while waiting. The 21 isolated browser tests and Android build/lint pass. A 20 ms bound, 1 ms polling cadence, first-place result or instantaneous Discord delivery cannot be guaranteed.
+
+## Version 1.4.2 USB device regression
+
+The 1.4.1 build was installed on the Xiaomi/POCO 25053PC47G (Android 16/API 36). Foreground send passed, but Home and screen-off sends failed at native text input. In the background, WebView needed a page callback after focus was requested before its input connection could be used. Version 1.4.2 restores that callback only in the background. All five synthetic-channel device tests then passed: foreground, Home, screen off, notification stop and deadline. These tests use a local page and do not establish Discord server delivery time.

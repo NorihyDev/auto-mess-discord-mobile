@@ -29,8 +29,8 @@ try {
         & .\gradlew.bat testDebugUnitTest lintRelease assembleRelease --console=plain
         if ($LASTEXITCODE -ne 0) { throw 'Android build or checks failed.' }
         New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-        Copy-Item -LiteralPath app\build\outputs\apk\release\app-release.apk -Destination artifacts\discord-message-auto-1.4.1.apk
-        Get-FileHash -Algorithm SHA256 -LiteralPath artifacts\discord-message-auto-1.4.1.apk
+        Copy-Item -LiteralPath app\build\outputs\apk\release\app-release.apk -Destination artifacts\discord-message-auto-1.4.2.apk
+        Get-FileHash -Algorithm SHA256 -LiteralPath artifacts\discord-message-auto-1.4.2.apk
     } finally { Pop-Location }
 } finally {
     Remove-Item Env:DMA_STORE_FILE -ErrorAction SilentlyContinue
