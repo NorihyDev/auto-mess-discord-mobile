@@ -1,5 +1,7 @@
 # License server
 
+If you do not have a domain or server, use the [Cloudflare Worker and D1 version](../cloudflare_worker/README.md) instead.
+
 Each generated key binds to the first Android Keystore public key that activates it. Later checks are signed with that phone's private key. The server stores only a SHA-256 hash of each license key, the device public key, model, and activation/check timestamps. It receives no Discord message, channel, login, or token.
 
 The admin page is at `https://YOUR_DOMAIN/admin`. Enter `DMA_ADMIN_TOKEN` to list activated phones, create a key, or revoke one. Copy each newly generated key immediately: the server does not store its plaintext. A revoked key fails the next license check (within about 30 seconds while monitoring). The client also checks before every new session. An offline or unavailable license server prevents starting or continuing a session.

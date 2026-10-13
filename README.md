@@ -54,7 +54,7 @@ Only the HTTPS `discord.com` main frame can deliver watcher events. External mai
 
 ## Build
 
-Distribution now requires a separately hosted HTTPS license service and a signed release built with `DMA_LICENSE_URL`. See [license server setup](license_server/README.md). Without that server, license creation, revocation, and activation cannot operate. The admin page lists phones after their first activation, not raw APK downloads. Debug builds without a URL bypass licensing only for local development.
+Distribution requires a hosted HTTPS license service and a signed release built with `DMA_LICENSE_URL`. Without a domain or server, use the [Cloudflare Worker and D1 setup](cloudflare_worker/README.md), which provides a `workers.dev` HTTPS address. A self-hosted [Python service](license_server/README.md) is also available. Without one of these backends, license creation, revocation, and activation cannot operate. The admin page lists phones after their first activation, not raw APK downloads. Debug builds without a URL bypass licensing only for local development.
 
 Use Android Studio, or JDK 21 and Android SDK 36. The checked-in wrapper uses Gradle 9.1.0 with Android Gradle Plugin 9.0.1. Set `ANDROID_HOME` or your ignored `local.properties`:
 
