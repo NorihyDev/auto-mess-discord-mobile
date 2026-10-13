@@ -12,6 +12,8 @@ This Cloudflare Worker implements the same license API as `license_server/server
 6. Generate a private admin token with `python -c "import secrets; print(secrets.token_urlsafe(48))"`. Save it in a password manager. Run `npx wrangler secret put DMA_ADMIN_TOKEN` and paste the token when prompted. It must have at least 32 characters.
 7. Open `YOUR_WORKER_URL/health` and check for `{"ok":true}`. Open `YOUR_WORKER_URL/admin`, enter the admin token, then generate a key for each person.
 
+On the Windows computer configured for this project, the generated admin token is stored encrypted with Windows DPAPI. Display it when needed by running `powershell -ExecutionPolicy Bypass -File scripts/show-admin-token.ps1` from the repository root. Keep the displayed value private.
+
 To build the distributable APK on Windows, return to the repository root and run:
 
 ```powershell
