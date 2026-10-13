@@ -6,7 +6,7 @@ Lightweight native Android version of [discord-mess-auto](https://github.com/Nor
 
 ## Install and use
 
-1. Install the signed `discord-message-auto-1.4.2.apk` built with your HTTPS license server URL (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Enter the activation key given by the administrator before starting a session.
+1. Install the signed `discord-message-auto-1.4.3.apk` built with your HTTPS license server URL (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Enter the activation key given by the administrator before starting a session.
 2. Paste a full Discord channel link into **Channel**, then tap **Open Discord** and sign in manually. Complete 2FA or CAPTCHA normally. Tap **Back to setup** to return.
 3. Write **Your message** and tap **Edit** beside **Opening time** to choose the time and timezone.
 4. Tap **Check without sending** to verify channel readiness without inserting text or sending.
@@ -26,7 +26,7 @@ Defaults for a new install: `20:00`, the device's timezone, 5 minutes before and
 
 License checks occur before monitoring begins and every 30 seconds while it runs. No license request is made when the Discord editor opens, so activation does not add a network round trip to the send path. Opening-window scheduling now wakes at the precise start boundary rather than waiting for the next one-second status tick. Actual send latency still depends on the phone, Android WebView, the user's connection, and Discord; instantaneous delivery or server acceptance cannot be guaranteed.
 
-Version 1.4.2 arms the draft observer before notifying Android that the editor is writable, removing one asynchronous WebView evaluation before native text input in the foreground. In the background it waits for a WebView focus callback before native input, which is required on the tested phone. The CSS-only fallback requests a 1 ms interval while armed. Chromium can clamp it to 4 ms or throttle it further in the background; DOM mutations still trigger the observer without waiting for this timer. The faster fallback increases CPU and battery use during the active watch window. A 20 ms reaction time is not established.
+Version 1.4.3 arms the draft observer before notifying Android that the editor is writable, removing one asynchronous WebView evaluation before native text input in the foreground. In the background it waits for a WebView focus callback before native input, which is required on the tested phone. If immediate foreground input fails, it retries once after checking that the draft remains empty. The page now arms its Enter guard before notifying Android that text preparation is complete, removing the final WebView evaluation callback before Enter. The CSS-only fallback requests a 1 ms interval while armed. Chromium can clamp it to 4 ms or throttle it further in the background; DOM mutations still trigger the observer without waiting for this timer. The faster fallback increases CPU and battery use during the active watch window. A 20 ms reaction time is not established.
 
 - A single native activity and the installed Android System WebView; no JavaScript UI framework or bundled browser.
 - Preloaded channel and persisted local login before the monitoring window.
@@ -77,7 +77,7 @@ $env:DMA_LICENSE_URL = 'https://licenses.example.com'
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.4.2.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
+The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.4.3.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
 
 GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration. Published release APKs use the maintained local release key.
 
@@ -92,7 +92,7 @@ python -m unittest discover -s tests -v
 
 Browser tests intercept every request with a fake channel; they do not contact Discord or send real messages. They exercise the same `watcher.js` asset used in Android. Java tests cover configuration, exact window boundaries, midnight, timezone conversion and daylight saving.
 
-Version 1.4.2 regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send in foreground, send after Home, send while the screen is off, notification stop and deadline cleanup. All five pass after restoring an asynchronous focus check for background input. On 2026-10-13, the signed 1.4.2 APK also sent one authorized live test message, observed 245 ms after editor detection and still present after reloading the channel. This is one interface observation, not a server-latency benchmark. Doze and overnight behavior remain unverified. Start with **Check without sending** and an authorized test channel before relying on a check-in.
+Version 1.4.3 regression tests run on the USB-connected Xiaomi/POCO 25053PC47G, Android 16/API 36. They use the real Android WebView and a local synthetic HTTPS channel, with no Discord requests: send in foreground, send after Home, send while the screen is off, notification stop and deadline cleanup. All five pass. Five repeated foreground runs measured 44.7 to 52.4 ms from opening the synthetic editor to Enter. On 2026-10-13, the signed 1.4.3 APK sent one authorized live test message: Enter occurred 158.5 ms after editor detection, the page showed it at 214 ms, and it was still present exactly once after reloading the channel. These are single interface observations, not server-latency benchmarks or proof of a consistent speedup against 1.4.2. Doze and overnight behavior remain unverified. Start with **Check without sending** and an authorized test channel before relying on a check-in.
 
 With a device connected, install the separate debug/test APKs, grant its notification permission and run:
 
