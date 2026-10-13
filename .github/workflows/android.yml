@@ -32,5 +32,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements-test.txt
       - run: python -m pip install -r requirements-test.txt
+      - run: python -m pip install -r license_server/requirements.txt
       - run: python -m playwright install --with-deps chromium
       - run: python -m unittest discover -s tests -v
+      - run: python -m unittest discover -s license_server -v

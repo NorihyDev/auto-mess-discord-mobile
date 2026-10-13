@@ -14,3 +14,4 @@ artifacts/
 config.json
 browser-profile/
 *.log
+*.sqlite3

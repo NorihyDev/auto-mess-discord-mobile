@@ -1,0 +1,26 @@
+services:
+  licenses:
+    build: .
+    environment:
+      DMA_ADMIN_TOKEN: ${DMA_ADMIN_TOKEN:?Set a random admin token}
+    volumes:
+      - license_data:/data
+    restart: unless-stopped
+  web:
+    image: caddy:2
+    environment:
+      LICENSE_DOMAIN: ${LICENSE_DOMAIN:?Set your domain}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - licenses
+    restart: unless-stopped
+volumes:
+  license_data:
+  caddy_data:
+  caddy_config:

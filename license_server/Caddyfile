@@ -1,0 +1,3 @@
+{$LICENSE_DOMAIN} {
+    reverse_proxy licenses:8765
+}
