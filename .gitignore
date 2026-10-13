@@ -15,3 +15,7 @@ config.json
 browser-profile/
 *.log
 *.sqlite3
+node_modules/
+.wrangler/
+dist/
+.dev.vars
