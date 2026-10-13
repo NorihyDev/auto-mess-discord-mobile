@@ -557,6 +557,21 @@ public final class MainActivity extends Activity {
         phase = "preparing";
         web.requestFocus();
         if (!eligible(run, "preparing")) return;
+        if (!foreground) {
+            // Background WebView focus can lag behind the watcher callback.
+            // Give it one page turn before creating its input connection.
+            web.evaluateJavascript("Boolean(window.DMA && window.DMA.validEmpty())", empty -> {
+                if (!eligible(run, "preparing")) return;
+                if (!"true".equals(empty)) {
+                    finish("Message preparation stopped", "Your draft or channel changed. Nothing sent."); return;
+                }
+                commitNativeText();
+            });
+            return;
+        }
+        commitNativeText();
+    }
+    private void commitNativeText() {
         InputConnection input = web.onCreateInputConnection(new EditorInfo());
         if (input == null || !input.commitText(config.message, 1)) {
             finish("Couldn't enter your message", "Nothing sent. Check the draft in Discord.");
