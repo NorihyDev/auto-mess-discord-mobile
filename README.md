@@ -6,7 +6,7 @@ Lightweight native Android version of [discord-mess-auto](https://github.com/Nor
 
 ## Install and use
 
-1. Install the signed `discord-message-auto-1.3.0.apk` built from this version (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases).
+1. Install the signed `discord-message-auto-1.4.0.apk` built with your HTTPS license server URL (see Build), or an APK from the [releases](https://github.com/NorihyDev/auto-mess-discord-mobile/releases). Enter the activation key given by the administrator before starting a session.
 2. Paste a full Discord channel link into **Channel**, then tap **Open Discord** and sign in manually. Complete 2FA or CAPTCHA normally. Tap **Back to setup** to return.
 3. Write **Your message** and tap **Edit** beside **Opening time** to choose the time and timezone.
 4. Tap **Check without sending** to verify channel readiness without inserting text or sending.
@@ -23,6 +23,8 @@ Defaults for a new install: `20:00`, the device's timezone, 5 minutes before and
 **Opening time defines a window, not a scheduled keypress.** An already writable channel can receive the message at the beginning of the window. A late opening can trigger an attempt until the end of the window. Threads and direct messages are unsupported. Existing drafts stop an attempt rather than being replaced.
 
 ## Mobile performance
+
+License checks occur before monitoring begins and every 30 seconds while it runs. No license request is made when the Discord editor opens, so activation does not add a network round trip to the send path. Opening-window scheduling now wakes at the precise start boundary rather than waiting for the next one-second status tick. Actual send latency still depends on the phone, Android WebView, the user's connection, and Discord; instantaneous delivery or server acceptance cannot be guaranteed.
 
 - A single native activity and the installed Android System WebView; no JavaScript UI framework or bundled browser.
 - Preloaded channel and persisted local login before the monitoring window.
@@ -52,6 +54,8 @@ Only the HTTPS `discord.com` main frame can deliver watcher events. External mai
 
 ## Build
 
+Distribution now requires a separately hosted HTTPS license service and a signed release built with `DMA_LICENSE_URL`. See [license server setup](license_server/README.md). Without that server, license creation, revocation, and activation cannot operate. The admin page lists phones after their first activation, not raw APK downloads. Debug builds without a URL bypass licensing only for local development.
+
 Use Android Studio, or JDK 21 and Android SDK 36. The checked-in wrapper uses Gradle 9.1.0 with Android Gradle Plugin 9.0.1. Set `ANDROID_HOME` or your ignored `local.properties`:
 
 ```properties
@@ -67,10 +71,11 @@ The debug APK is at `app/build/outputs/apk/debug/app-debug.apk`. On macOS/Linux 
 To build a reduced, signed release on Windows:
 
 ```powershell
+$env:DMA_LICENSE_URL = 'https://licenses.example.com'
 powershell -ExecutionPolicy Bypass -File scripts/build-release.ps1
 ```
 
-The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.3.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
+The script creates a persistent signing key in `%LOCALAPPDATA%\DiscordMessageAutoMobile\signing`, stores its password protected with Windows DPAPI, runs checks and writes `artifacts/discord-message-auto-1.4.0.apk`. Keep a secure backup of that signing directory to build compatible updates; never commit it. Release signing can also use the `DMA_STORE_FILE` and `DMA_STORE_PASSWORD` environment variables with the `mobile` key alias.
 
 GitHub Actions builds a debug APK and runs Java and browser tests. Debug builds use the separate `dev.norihy.discordmobile.debug` package, so device regression tests cannot overwrite the production app's login, configuration. Published release APKs use the maintained local release key.
 
