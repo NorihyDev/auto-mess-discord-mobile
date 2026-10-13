@@ -1,4 +1,5 @@
 $ErrorActionPreference = 'Stop'
+if (-not $env:DMA_LICENSE_URL -or -not $env:DMA_LICENSE_URL.StartsWith('https://')) { throw 'Set DMA_LICENSE_URL to your deployed HTTPS license server before building a distributable APK.' }
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $signingDir = Join-Path $env:LOCALAPPDATA 'DiscordMessageAutoMobile\signing'
 $storeFile = Join-Path $signingDir 'mobile.jks'
@@ -28,8 +29,8 @@ try {
         & .\gradlew.bat testDebugUnitTest lintRelease assembleRelease --console=plain
         if ($LASTEXITCODE -ne 0) { throw 'Android build or checks failed.' }
         New-Item -ItemType Directory -Path artifacts -Force | Out-Null
-        Copy-Item -LiteralPath app\build\outputs\apk\release\app-release.apk -Destination artifacts\discord-message-auto-1.3.0.apk
-        Get-FileHash -Algorithm SHA256 -LiteralPath artifacts\discord-message-auto-1.3.0.apk
+        Copy-Item -LiteralPath app\build\outputs\apk\release\app-release.apk -Destination artifacts\discord-message-auto-1.4.0.apk
+        Get-FileHash -Algorithm SHA256 -LiteralPath artifacts\discord-message-auto-1.4.0.apk
     } finally { Pop-Location }
 } finally {
     Remove-Item Env:DMA_STORE_FILE -ErrorAction SilentlyContinue

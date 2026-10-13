@@ -30,6 +30,19 @@ public final class MainActivity extends Activity {
     }
     private final Handler handler = new Handler(Looper.getMainLooper());
     private SharedPreferences prefs;
+    private LicenseClient licenses;
+    private boolean licenseChecking;
+    private final Runnable recheckLicense = new Runnable() {
+        @Override public void run() {
+            if (!active()) return;
+            String key = prefs.getString("license_key", "");
+            licenses.validate(key, false, (valid, reason) -> {
+                if (!active()) return;
+                if (!valid) { finish("License unavailable", reason + ". Watching stopped."); return; }
+                handler.postDelayed(this, 30000);
+            });
+        }
+    };
     private LinearLayout root;
     private ScrollView form;
     private WebView web;
@@ -62,13 +75,15 @@ public final class MainActivity extends Activity {
                     showStatus("Watching starts soon", String.format(Locale.US, "Starts in %02d:%02d:%02d · %s", seconds / 3600, seconds / 60 % 60, seconds % 60, config.zone));
                 }
             }
-            handler.postDelayed(this, 1000);
+            long untilStart = Duration.between(Instant.now(), window.start()).toMillis();
+            handler.postDelayed(this, untilStart > 0 ? Math.min(1000, untilStart) : 1000);
         }
     };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         prefs = getSharedPreferences("watcher", MODE_PRIVATE);
+        licenses = new LicenseClient(this);
         try (InputStream input = getAssets().open("watcher.js")) {
             ByteArrayOutputStream buffer = new ByteArrayOutputStream();
             byte[] block = new byte[4096]; int count;
@@ -231,7 +246,7 @@ public final class MainActivity extends Activity {
     private void showMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor);
         menu.getMenu().add(0, 1, 0, "Activity log"); menu.getMenu().add(0, 2, 1, "Watch window");
-        menu.getMenu().add(0, 3, 2, "Reset today's attempt"); menu.getMenu().add(0, 4, 3, "About & help");
+        menu.getMenu().add(0, 3, 2, "Reset today's attempt"); menu.getMenu().add(0, 5, 3, "Activation key"); menu.getMenu().add(0, 4, 4, "About & help");
         menu.getMenu().findItem(2).setEnabled(!active()); menu.getMenu().findItem(3).setEnabled(!active());
         menu.setOnMenuItemClickListener(item -> {
             switch (item.getItemId()) {
@@ -239,6 +254,7 @@ public final class MainActivity extends Activity {
                     .setMessage(events.isEmpty() ? "No activity yet." : String.join("\n\n", events)).setPositiveButton("Done", null).show()); break;
                 case 2: showWatchWindow(); break;
                 case 3: resetAttempt(); break;
+                case 5: showLicenseDialog(); break;
                 case 4: ui.polishDialog(new AlertDialog.Builder(this).setTitle("About Message Auto")
                     .setMessage("One send attempt per channel and scheduled day. Start a new session each day.\n\nWatching continues in the background. Allow notifications and unrestricted battery use for longer sessions. Don't force-stop the app.\n\nAn existing draft stops sending. If a send isn't confirmed, check Discord before resetting the attempt.\n\nDiscord prohibits automated personal accounts and may sanction your account.\n\nVersion " + BuildConfig.VERSION_NAME + " \u00b7 Manrope font (SIL Open Font License)")
                     .setNeutralButton("Discord policy", (d, w) -> openExternal(Uri.parse("https://support.discord.com/hc/en-us/articles/115002192352-Automated-User-Accounts-Self-Bots")))
@@ -420,6 +436,46 @@ public final class MainActivity extends Activity {
     }
     private void start(boolean previewOnly) {
         if (!foreground || active()) return;
+        if (licenseChecking) return;
+        if (BuildConfig.DEBUG && !licenses.configured()) { startVerified(previewOnly); return; }
+        if (!licenses.configured()) { showStatus("License server missing", "This APK needs a configured HTTPS license server."); return; }
+        String key = prefs.getString("license_key", "");
+        if (key.isEmpty()) { showLicenseDialog(); return; }
+        licenseChecking = true;
+        showStatus("Checking activation...", "Contacting the license server.");
+        licenses.validate(key, false, (valid, reason) -> {
+            licenseChecking = false;
+            if (isFinishing() || isDestroyed()) return;
+            if (!valid) { showStatus("License unavailable", reason); return; }
+            startVerified(previewOnly);
+        });
+    }
+    private void showLicenseDialog() {
+        if (active() || licenseChecking) return;
+        EditText field = ui.input("", "DMA-...");
+        field.setSingleLine(true); field.setAllCaps(true);
+        LinearLayout box = dialogContent();
+        box.addView(label("Enter the key given by the administrator. It activates on this phone only.", 13, UiStyle.MUTED));
+        box.addView(field, spaced(-1, dp(52), 12));
+        AlertDialog dialog = new AlertDialog.Builder(this).setTitle("Activate this phone")
+            .setView(box).setNegativeButton("Cancel", null).setPositiveButton("Activate", null).create();
+        dialog.setOnShowListener(d -> {
+            ui.polishDialog(dialog);
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String key = field.getText().toString().trim().toUpperCase(Locale.US);
+                if (!key.matches("DMA-(?:[0-9A-F]{6}-){3}[0-9A-F]{6}")) { field.setError("Enter a complete activation key."); return; }
+                licenseChecking = true; dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(false);
+                licenses.validate(key, true, (valid, reason) -> {
+                    licenseChecking = false;
+                    if (isFinishing() || isDestroyed()) return;
+                    if (!valid) { field.setError(reason); dialog.getButton(AlertDialog.BUTTON_POSITIVE).setEnabled(true); return; }
+                    prefs.edit().putString("license_key", key).apply();
+                    dialog.dismiss(); showStatus("Phone activated", "You can now start watching.");
+                });
+            });
+        }); dialog.show();
+    }
+    private void startVerified(boolean previewOnly) {
         WatchConfig c = readConfig(); if (c == null) return;
         if (!bridgeSupported) { showStatus("Update Android System WebView", "Update Android System WebView or Chrome, then reopen this app."); return; }
         config = c; save(c); previewMode = previewOnly;
@@ -439,6 +495,7 @@ public final class MainActivity extends Activity {
             showStatus("Couldn't start watching", "Keep this app open and try again."); return;
         }
         phase = "armed"; token = UUID.randomUUID().toString(); installed = false;
+        if (licenses.configured()) handler.postDelayed(recheckLicense, 30000);
         browser(); controls(true);
         String address = web.getUrl();
         if (address == null || !address.replaceAll("/$", "").equals(c.url)) web.loadUrl(c.url);
@@ -531,7 +588,7 @@ public final class MainActivity extends Activity {
     private void finish(String title, String explanation) {
         WatchService.onStopRequested = null;
         stopService(new Intent(this, WatchService.class));
-        phase = "idle"; token = null; installed = false; handler.removeCallbacks(tick);
+        phase = "idle"; token = null; installed = false; handler.removeCallbacks(tick); handler.removeCallbacks(recheckLicense);
         if (web != null) web.evaluateJavascript("window.DMA && window.DMA.stop()", null);
         if (web != null && !foreground) web.onPause();
         controls(false); showStatus(title, explanation); log(title + ". " + explanation);
@@ -570,5 +627,5 @@ public final class MainActivity extends Activity {
     private void resumeRequestedWatch() {
         if (resumeAfterPermission && foreground) { resumeAfterPermission = false; start(previewMode); }
     }
-    @Override protected void onDestroy() { if (active()) finish("Watching stopped", "The app was closed. Start watching again manually."); handler.removeCallbacksAndMessages(null); web.destroy(); super.onDestroy(); }
+    @Override protected void onDestroy() { if (active()) finish("Watching stopped", "The app was closed. Start watching again manually."); handler.removeCallbacksAndMessages(null); licenses.close(); web.destroy(); super.onDestroy(); }
 }
